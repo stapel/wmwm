@@ -1,0 +1,292 @@
+-*- text -*-
+
+User visible changes
+
+2012-03-05
+
+  * New key: MODKEY + i hides windows.
+
+  * New program: hidden. Lists hidden windows.
+
+2012-02-15
+
+  * Added option -i to allow icons.
+
+  * Added scripts: mcmenu (configurable start meny) and 9icon (to map
+    iconified windows).
+
+2012-02-07
+
+  * Check for socket errors. Should prevent busy loops.
+
+2011-11-22
+
+  * Now optionally starts programs when MODKEY + mouse buttons are
+    pressed on root window. See config.h for configuration and the
+    manual page for an example.
+
+    Also simplified starting programs.
+
+2011-11-17
+
+  * In a ConfigureRequest we no longer obey window movements not
+    initiated by the user.
+
+  * Fixed bug where client-initiated resize could resize outside of
+    physical screen.
+
+  * Fixed bug with topright command on other physical screens.
+
+  * -b no longer boolean. Now takes parameter number of pixels.
+
+2011-08-15
+
+  * Fixed crash in one screen scenario.
+
+  * Fixed non-starting bug when on an architecture with unsigned
+    chars.
+
+2011-08-12
+
+  * It was still possible to map a window on coordinates outside
+    physical screens. Now hopefully fixed, if not perfectly: If a
+    window isn't bound to any physical screen it will be mapped on the
+    first screen mcwm knows about.
+
+2011-07-26
+
+  * Tabbing warps to middle of window instead of corner. Makes it
+    easier if you want to paste something with middle button without
+    having to move the pointer.
+
+2011-07-20
+
+   * Speedup when using a trackball or high CPI mouse. Use only mouse
+     pointer hints instead of actual mouse events and let mcwm ask for
+     pointer position.
+
+     Incidentally, this was originally added in June, 2010, but
+     removed a month later after reading Gajewska and Manasse's "Why X
+     Is Not Our Ideal Window System". Real experience shows that I was
+     mistaken.
+
+2011-06-20
+
+   * Fixed windows were always inserted as the next window in window
+     list after changing workspace. Now fixed.
+
+2011-06-01
+
+   * Beginning of RANDR support. mcwm now aware of the number of
+     physical screens and their sizes. Move and resize is now limited
+     by size of physical screen instead of virtual screen.
+
+   * New keys: Mod4 + , moves focused window to previous screen and
+     Mod4 + . moves it to the next screen.
+
+2011-03-29
+
+   * Panels and other windows with window manager override interfered
+     with resize. mcwm got confused about the size of the window. Now
+     fixed.
+
+2011-03-28
+
+   * Always raise window when fixing it on all workspaces. When moving
+     windows between workspaces, this makes us sure we can find it on
+     the workspace we're going to. Thanks to Simon Friis for noticing.
+
+2011-03-26
+
+   * You don't have to tell mcwm what keycode generates the MODKEY
+     mask anymore (USERKEY_MOD in config.h is gone). mcwm now asks the
+     X server what keys generate the mask and also supports several
+     keys generating the mask.
+
+   * Stops tabbing around not only if a key generating MODKEY mask is
+     lifted but also if another command key is pressed.
+
+2011-03-18
+
+   * Now handles keyboard remapping.
+
+2011-02-23
+
+   * If you change focus window mcwm remembers where we last had
+     focus. If you start using MODKEY+Tab to move around the window
+     list the first Tab will always bring you to where we last had
+     focus.
+
+2011-02-19
+
+   * Resets per window state of max or vertical max when physical
+     screen size changes.
+
+   * Doesn't reset x coordinate when unmaxing vertically.
+
+   * Specifically grab the keycodes we use and keycodes + shift
+     modifier. Now works OK with xbindkeys.
+
+2010-11-18
+
+   NOTA BENE! Modifier key changed! Now using Mod4 instead of Mod2 for
+   key bindnings. I've been using my own key maps for so long that I
+   forgot all about NumLock usually being Mod2 and users complained.
+   I'm sorry.
+
+2010-11-01
+
+  * Fixed bug. We mangled a list when a window was destroyed on
+    another workspace. This would lead to sticky windows that we
+    didn't seem to know about. 
+
+    The same code also prepares for the possibility that a window
+    might occupy several, but not all, workspaces at the same time. We
+    still don't have any user interface to control this, however.
+
+2010-09-08
+
+  * New key: MODKEY + End closes window. Patch from Christian
+    Neukirchen, who used MODKEY + ESC instead.
+
+2010-08-23
+
+  * Obey window coordinates when doing initial mapping if the client
+    says the user specified them, for instance with a -geometry.
+
+2010-08-10
+
+  * Mod2-Tab no longer raises a window unless it's necessary for the
+    window to be visible.
+
+  * We no longer obey clients trying to map themselves on the current
+    workspace when they belong to another workspace. Notably, this
+    affects Emacs frames used with emacsclient if server-raise-frame
+    is non-nil. The mouse pointer will still be warped, though, but at
+    least we stop the window on the other workspace to suddenly move
+    to the current workspace.
+
+2010-07-28
+
+  * Now works with unclutter.
+
+2010-07-23
+
+  * Better use of size increments.
+
+2010-07-22
+
+  * When resizing by keyboard we don't warp the pointer along with the
+    window if the pointer was outside the window when we started
+    resizing.
+
+2010-07-21-2
+
+  * When moving by keyboard, we don't warp the pointer along with the
+    window if the pointer was outside the window to begin with.
+
+  * Don't allow moving or resizing of fully maximized windows.
+
+2010-07-21
+
+  * Will react on signals directly instead of waiting for next X event.
+
+  * Raises windows before moving to corner.
+
+2010-07-20
+
+  * Grabbed keypresses that mcwm doesn't know what to do with will be
+    sent to the focused window.
+
+  * More bug fixes.
+
+2010-07-19-2
+
+  * Many bug fixes. Including crashing bugs, triggered under Linux.
+
+2010-07-18
+
+  * Move and resize, both with keyboard and mouse, now keeps pointer
+    in place within window if it's possible without losing focus.
+
+  * Move window to screen corners with YUBN.
+
+2010-07-10
+
+  * Border colour of fixed windows can be set from command line with
+    -x colour.
+
+  * Dies gracefully and maps all windows on all workspaces.
+
+  * Handle unmapped, but inactive, windows when changing workspaces.
+    This means that xpdf's and gv's transient windows won't show up
+    again when changing workspaces unless they're currently really
+    active.
+
+2010-07-07
+
+  * Rearranges windows to be visible and fit on screen if a physical
+    screen is removed or screen is tilted.
+
+  * Maximize and vertical maximize toggles.
+
+  * First virtual workspace, that is 1, is now numbered as 0 in the
+    _NET_WM_DESKTOP as in the rest of the window managers following
+    EWMH.
+
+2010-06-30
+
+  * Virtual workspaces available with Mod2-0,1,2... Fix on all
+    workspaces with Mod2-f.
+
+2010-06-29
+
+  * Focus can change from keyboard with Mod2-Tab.
+
+2010-06-24-3
+
+  * -f and -u options for focused and unfocused colours.
+
+2010-06-24
+
+  * When starting, we don't care about windows with override redirect
+    set. This means, for instance, that if a GTK application was
+    running when we started, we won't draw any borders around its
+    menus.
+
+  * New option, -t <terminal-program>.
+
+  * Fixed bugs.
+
+2010-06-22
+
+  * Handles size changes of the root window. That is, if the user adds
+    an additional screen or removes one when the X server supports
+    RANDR.
+
+  * MODKEY + R toggles raise/lower of window.
+
+  * Maps new windows on pointer position and tries to fit on screen.
+
+  * Resizes with size hints. This means, for instance, that most
+    programs using fixed width fonts resizes by font width and height.
+    No feedback yet, though.
+
+  * Handles more requests, which means usable with more programs
+    (xterm and xpdf, for instance, which hardly worked before).
+
+  * Fixed bugs.
+  
+2010-06-19
+
+  * Now a real window manager. Now controls mapping of windows. If we
+    can't be a real window manager, this probably means there is
+    already one running, so we fall back to co-running.
+
+    Windows are mapped at the pointer position if we can control it.
+
+  * A flag, -b, for not drawing any borders what so ever. Might be
+    useful when co-running.
+
+  * Now doesn't raise windows all the time while moving or resizing
+    with the mouse. Just raises once.

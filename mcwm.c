@@ -1448,9 +1448,13 @@ client_t *setup_win(xcb_window_t win, bool visible)
 	/* Get window geometry. */
 	if (! getgeom(client->id, &client->x, &client->y, &client->width,
 				&client->height)) {
-		fprintf(stderr, "Couldn't get geometry in initial setup of window.\n");
+		PDEBUG("Couldn't get geometry in initial setup of window.\n");
 	}
-	if (visible) client->ignore_unmap++; // for reparent
+
+	if (visible) {
+		client->ignore_unmap++; // for reparent
+		PDEBUG("++ignore_unmap == %d\n", client->ignore_unmap);
+	}
 	reparent(client);
 	setborders(client, conf.borderwidth);
 
@@ -2862,6 +2866,7 @@ void hide(client_t *client)
 	 * The quantity of that events will be mentioned in ignore_unmap.
 	 */
 	client->ignore_unmap++;
+	PDEBUG("++ignore_unmap == %d\n", client->ignore_unmap);
 	xcb_unmap_window(conn, client->parent);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
@@ -4271,6 +4276,7 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 		if (client->ignore_unmap) {
 			PDEBUG("unmap_notify for 0x%x - ignored\n", e->window);
 			client->ignore_unmap--;
+			PDEBUG("--ignore_unmap == %d\n", client->ignore_unmap);
 		} else {
 			PDEBUG("unmap_notify for 0x%x\n", e->window);
 			remove_client(client);

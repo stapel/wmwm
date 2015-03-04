@@ -3279,7 +3279,6 @@ void handle_map_request(xcb_generic_event_t* ev)
 {
 	xcb_map_request_event_t *e;
 	e = (xcb_map_request_event_t *) ev;
-	PDEBUG("event: Map request.\n");
 
 	new_win(e->window);
 }
@@ -3917,7 +3916,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 
 	xcb_configure_request_event_t* e = (xcb_configure_request_event_t*) ev;
 
-	PDEBUG("event: Configure request. mask = %d\n", e->value_mask);
+	PDEBUG("configure_request: mask = %d\n", e->value_mask);
 
 
 	/* Find the client. */
@@ -4262,17 +4261,17 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 		if (XCB_EVENT_SENT(ev)) {
 			// synthetic event, indicates wanting to withdrawn state
 			// XXX That is still wrong
-			PDEBUG("UnmapNotify [synthetic] for 0x%x\n", e->window);
+			PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);
 			//long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
 			//xcb_change_property(conn, XCB_PROP_MODE_REPLACE, e->window,
 			//	icccm.wm_state, icccm.wm_state, 32, 2, data);
 			return;
 		}
 		if (client->ignore_unmap) {
-			PDEBUG("UnmapNotify for 0x%x - ignored\n", e->window);
+			PDEBUG("unmap_notify for 0x%x - ignored\n", e->window);
 			client->ignore_unmap--;
 		} else {
-			PDEBUG("UnmapNotify for 0x%x\n", e->window);
+			PDEBUG("unmap_notify for 0x%x\n", e->window);
 			remove_client(client);
 		}
 	}
@@ -4289,7 +4288,7 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 		= (xcb_destroy_notify_event_t *) ev;
 
 	client_t *client = findclient(e->window);
-	PDEBUG("DestroyNotify for 0x%x (client = %d)\n", e->window, client ? 1 : 0);
+	PDEBUG("destroy_notify for 0x%x (is client = %d)\n", e->window, client ? 1 : 0);
 
 	if (client) {
 		/*
@@ -4308,7 +4307,6 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 void handle_focus_in(xcb_generic_event_t *ev)
 {
 	xcb_focus_in_event_t *e = (xcb_focus_in_event_t*)ev;
-	PDEBUG("FocusIn Notify!\n");
 
 	// XXX I dont know what to do here, copied from dwm :P
 	if (focuswin &&

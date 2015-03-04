@@ -435,7 +435,6 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 	[XCB_ENTER_NOTIFY]		= handle_enter_notify,
 	[XCB_CONFIGURE_NOTIFY]	= handle_configure_notify,
 	[XCB_REPARENT_NOTIFY]	= handle_reparent_notify,
-	[XCB_REPARENT_NOTIFY]	= NULL,
 	[XCB_CONFIGURE_REQUEST] = handle_configure_request,
 	[XCB_CLIENT_MESSAGE]	= handle_client_message,
 	[XCB_CIRCULATE_REQUEST]	= handle_circulate_request,

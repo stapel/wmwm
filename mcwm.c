@@ -463,7 +463,6 @@ static void changeworkspace(uint32_t ws);
 static void fixwindow(client_t *client, bool setcolour);
 static uint32_t getcolor(const char *colstr);
 static void remove_client(client_t *client);
-static void forget_client(client_t *client);
 //static void forgetwin(xcb_window_t win);
 static void fitonscreen(client_t *client);
 static void new_win(xcb_window_t win);
@@ -995,25 +994,17 @@ uint32_t getcolor(const char *colstr)
 }
 
 
-/* remove parent window and client */
+/* Forget everything about client client. */
 void remove_client(client_t *client)
 {
-	PDEBUG("remove_client: win = 0x%x, parent = 0x%x\n", client->id, client->parent);
-	xcb_reparent_window(conn, client->id, screen->root, 0, 0);
-	xcb_destroy_window(conn, client->parent);
-	forget_client(client);
-	xcb_flush(conn);
-}
-
-/* Forget everything about client client. */
-void forget_client(client_t *client)
-{
 	if (is_null(client)) {
-		PDEBUG("forget_client: client was NULL\n");
+		PDEBUG("remove_client: client was NULL\n");
 		return;
 	}
 
-	PDEBUG("forget_client: forgeting about win 0x%x\n", client->id);
+	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
+
+	xcb_window_t parent = client->parent;
 
 	if (focuswin == client) focuswin = NULL;
 	if (lastfocuswin == client) lastfocuswin = NULL;
@@ -1031,6 +1022,8 @@ void forget_client(client_t *client)
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);
+	PDEBUG("remove_client: destroying parent window 0x%x\n", parent);
+	xcb_destroy_window(conn, parent);
 }
 
 /* Forget everything about a client with client->id win. */
@@ -1039,7 +1032,7 @@ void forgetwin(xcb_window_t win)
 {
 	client_t *client = findclient(win);
 	if (client) {
-		forget_client(client);
+		remove_client(client);
 	}
 }
 */
@@ -3280,7 +3273,7 @@ void handle_error_event(xcb_generic_event_t *ev)
 
 	// TODO this is not a solution indeed
 	if (e->error_code == 3) { // BadWindow
-		forget_client(findclient(e->resource_id));
+		remove_client(findclient(e->resource_id));
 	}
 }
 
@@ -4281,9 +4274,9 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 			return;
 		}
 		if (client->ignore_unmap) {
-			PDEBUG("unmap_notify for 0x%x - ignored\n", e->window);
 			client->ignore_unmap--;
-			PDEBUG("--ignore_unmap == %d\n", client->ignore_unmap);
+			PDEBUG("unmap_notify for 0x%x - ignored (#%d)\n", e->window,
+					client->ignore_unmap);
 		} else {
 			PDEBUG("unmap_notify for 0x%x\n", e->window);
 			remove_client(client);

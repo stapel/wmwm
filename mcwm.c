@@ -3235,9 +3235,10 @@ void events(void)
 			} else continue; // We found more events. Goto start of loop.
 		}
 
-		PDEBUG("Event: %s (%d)\n",
+		PDEBUG("Event: %s (%d, handler: %d)\n",
 				xcb_event_get_label(XCB_EVENT_RESPONSE_TYPE(ev)),
-				XCB_EVENT_RESPONSE_TYPE(ev));
+				XCB_EVENT_RESPONSE_TYPE(ev)
+				handler[XCB_EVENT_RESPONSE_TYPE(ev)] ? 1 : 0);
 
 		if (ev->response_type 
 				== (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {

@@ -2841,6 +2841,7 @@ void show(client_t *client)
 	/* Map window and declare normal
 	 *
 	 */
+	xcb_map_window(conn, client->id);
 	xcb_map_window(conn, client->parent);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);

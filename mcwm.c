@@ -2859,7 +2859,13 @@ void hide(client_t *client)
 	 */
 	client->ignore_unmap++;
 	PDEBUG("++ignore_unmap == %d\n", client->ignore_unmap);
+	/* 4.1.4
+	 * Reparenting window managers must unmap the client's window 
+	 * when it is in the Iconic state, even if an ancestor window
+	 * being unmapped renders the client's window unviewable.
+	 */
 	xcb_unmap_window(conn, client->parent);
+	xcb_unmap_window(conn, client->id);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
 }

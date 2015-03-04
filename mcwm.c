@@ -434,7 +434,7 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 	[XCB_KEY_RELEASE]		= handle_key_release,
 	[XCB_ENTER_NOTIFY]		= handle_enter_notify,
 	[XCB_CONFIGURE_NOTIFY]	= handle_configure_notify,
-//	[XCB_REPARENT_NOTIFY]	= handle_reparent_notify,
+	[XCB_REPARENT_NOTIFY]	= handle_reparent_notify,
 	[XCB_REPARENT_NOTIFY]	= NULL,
 	[XCB_CONFIGURE_REQUEST] = handle_configure_request,
 	[XCB_CLIENT_MESSAGE]	= handle_client_message,
@@ -3286,13 +3286,11 @@ void handle_map_request(xcb_generic_event_t* ev)
 }
 
 // XXX test
-#if 0
 void handle_reparent_notify(xcb_generic_event_t *ev)
 {
 	(void)ev;
 #ifdef DEBUG
 	const xcb_reparent_notify_event_t* e = (xcb_reparent_notify_event_t*)ev;
-	
 	// window: the window that has been reparented
 	// parent: the new parent window
 
@@ -3303,7 +3301,6 @@ void handle_reparent_notify(xcb_generic_event_t *ev)
 #endif
 
 }
-#endif // 0
 
 
 void handle_property_notify(xcb_generic_event_t *ev)
@@ -4279,7 +4276,7 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 					client->ignore_unmap);
 		} else {
 			PDEBUG("unmap_notify for 0x%x\n", e->window);
-			remove_client(client);
+//			remove_client(client);
 		}
 	}
 }

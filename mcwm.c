@@ -4260,6 +4260,10 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 	// maybe like evilwm c->ignore_unmap
 	// also see dwm.c
 
+
+	// XXX differentate between notifies between parent and id XXX
+	// CURRENT
+	//
 //		xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
 
 	client_t *client = findclient(e->window);

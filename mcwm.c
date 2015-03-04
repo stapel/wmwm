@@ -2304,20 +2304,28 @@ client_t *findclient(xcb_drawable_t win)
 		return NULL;
 	}
 
-	if (focuswin && (focuswin->id == win || focuswin->parent == win)) {
-		PDEBUG("findclient(): Win: 0x%x (focuswin)\n", win);
-		return focuswin;
+	if (focuswin) {
+		if (focuswin->id == win) {
+			PDEBUG("findclient(): Win: 0x%x (focuswin->id)\n", win);
+			return focuswin;
+		} else if (focuswin->parent == win) {
+			PDEBUG("findclient(): Win: 0x%x (focuswin->parent)\n", win);
+			return focuswin;
+		}
 	}
 
 	for (item_t *item = winlist; item; item = item->next) {
 		client = item->data;
-		if (win == client->id || win == client->parent) {
-			PDEBUG("findclient(): Win: 0x%x\n", win);
+		if (win == client->id) {
+			PDEBUG("findclient(): Win: 0x%x (id)\n ", win);
+			return client;
+		} else if (win == client->parent) {
+			PDEBUG("findclient(): Win: 0x%x (parent)\n", win);
 			return client;
 		}
 	}
 
-	PDEBUG("findclient(): Did not find a client for windows 0x%x\n", win);
+	PDEBUG("findclient(): unknown window 0x%x\n", win);
 	return NULL;
 }
 

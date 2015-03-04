@@ -4,6 +4,7 @@ SRC=mcwm.c list.c config.h list.h
 DISTFILES=LICENSE Makefile NEWS README TODO WISHLIST mcwm.man $(SRC)
 
 #CC=clang
+debug=1
 CC=gcc
 ifeq ($(mudflap),1)
 	ETCFLAGS=-pedantic -fmudflap#-DDEBUG

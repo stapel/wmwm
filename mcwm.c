@@ -3080,9 +3080,12 @@ void deletewin(client_t* client)
 			.data.data32 = {icccm.wm_delete_window, get_timestamp()}
 		};
 
+		PDEBUG("deletewin: 0x%x (send_event #%d)\n", client->id,
+				client->killed);
 		xcb_send_event(conn, false, client->id,
 				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
 	} else {
+		PDEBUG("deletewin: 0x%x (kill_client)\n", client->id);
 		xcb_kill_client(conn, client->id);
 	}
 

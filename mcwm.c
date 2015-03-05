@@ -533,9 +533,11 @@ static xcb_atom_t getatom(char *atom_name);
 
 static void get_mondim(monitor_t* monitor, xcb_rectangle_t* sp);
 
+#if 0
 static int get_wm_name(xcb_window_t, char**, int*);
 static int get_wm_name_icccm(xcb_window_t, char**, int*);
 static int get_wm_name_ewmh(xcb_window_t, char**, int*);
+#endif
 
 /* Function bodies. */
 
@@ -3243,9 +3245,8 @@ void configwin(xcb_window_t win, uint16_t old_mask, winconf_t wc)
 		values[i] = wc.stackmode;
 	}
 
-	if (-1 != i) {
+	if (i != -1) {
 		xcb_configure_window(conn, win, mask, values);
-		xcb_flush(conn);
 	}
 }
 
@@ -4125,7 +4126,6 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		if (resizing) {
 			resize(client->id, client->width, client->height);
 		}
-		xcb_flush(conn);
 	} else {
 		PDEBUG("We don't know about this window yet.\n");
 
@@ -4144,6 +4144,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 
 		configwin(e->window, e->value_mask, wc);
 	}
+	xcb_flush(conn);
 }
 
 static void handle_client_message(xcb_generic_event_t *ev)
@@ -4173,18 +4174,12 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	}
 #endif
 
-	long r[] = { conf.borderwidth, conf.borderwidth, conf.borderwidth,
-		conf.borderwidth };
 
 	// XXX set this for all and availables
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
-		xcb_change_property(
-				conn,
-				XCB_PROP_MODE_REPLACE,
-				e->window,
-				ewmh->_NET_FRAME_EXTENTS,
-				XCB_ATOM_CARDINAL, 32, 4,
-				&r);
+		long r[] = { conf.borderwidth, conf.borderwidth, conf.borderwidth, conf.borderwidth };
+		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, e->window, ewmh->_NET_FRAME_EXTENTS,
+				XCB_ATOM_CARDINAL, 32, 4, &r);
 		xcb_flush(conn);
 		return;
 	}
@@ -4492,7 +4487,7 @@ void get_mondim(monitor_t* monitor, xcb_rectangle_t* sp)
 		sp->height = monitor->height;
 	}
 }
-
+#if 0
 int get_wm_name(xcb_window_t win, char** string, int* len)
 {
 	if (! get_wm_name_ewmh(win, string, len)) {
@@ -4566,6 +4561,7 @@ int get_wm_name_ewmh(xcb_window_t win, char **string, int* len)
 	xcb_ewmh_get_utf8_strings_reply_wipe(&data);
 	return 1;
 }
+#endif
 
 int main(int argc, char **argv)
 {

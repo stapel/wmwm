@@ -1033,8 +1033,6 @@ void remove_client(client_t *client)
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);
-	PDEBUG("remove_client: destroying parent window 0x%x\n",
-			client->parent);
 }
 
 /* Forget everything about a client with client->id win. */

@@ -998,12 +998,17 @@ uint32_t getcolor(const char *colstr)
 void withdraw_client(client_t* client)
 {
 	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
+	xcb_generic_error_t *error;
+	xcb_void_cookie_t vc;
 
 	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
-	PDEBUG("-> and set window to withdrawn state");
-	xcb_reparent_window(conn, client->id, screen->root, 0, 0);
-	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
-		icccm.wm_state, icccm.wm_state, 32, 2, data);
+	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
+	error = xcb_request_check(conn, vc);
+	if (! error) {
+		PDEBUG(" and set window to withdrawn state");
+		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
+			icccm.wm_state, icccm.wm_state, 32, 2, data);
+	}
 	xcb_destroy_window(conn, client->parent);
 }
 
@@ -3322,7 +3327,7 @@ void handle_error_event(xcb_generic_event_t *ev)
 	if (e->error_code == 3) { // BadWindow
 		client_t* client = findclientp(e->resource_id);
 		if (client) {
-			withdraw_client(client);
+			xcb_destroy_window(conn, client->parent);
 			remove_client(client);
 		}
 	}
@@ -4309,6 +4314,10 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 	// CURRENT
 	//
 //		xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
+
+	PDEBUG("unmap_notify: sent=%d event=0x%x, window=0x%x, seq=%d\n",
+			XCB_EVENT_SENT(ev),
+			e->event, e->window, e->sequence);
 
 	client_t *client = findclient(e->window);
 	if (client) {

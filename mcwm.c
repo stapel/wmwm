@@ -4267,6 +4267,10 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 
 	client_t *client = findclient(e->window);
 	if (client) {
+		/* don't bother with parent window unmap notifications */
+		if (e->window == client->parent) {
+			return;
+		}
 		if (XCB_EVENT_SENT(ev)) {
 			// synthetic event, indicates wanting to withdrawn state
 			// XXX That is still wrong

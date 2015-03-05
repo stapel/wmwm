@@ -465,7 +465,7 @@ static void remove_client(client_t *client);
 //static void forgetwin(xcb_window_t win);
 static void fitonscreen(client_t *client);
 static void new_win(xcb_window_t win);
-static client_t *setup_win(xcb_window_t win, bool);
+static client_t *setup_win(xcb_window_t win);
 
 
 static xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym,
@@ -493,6 +493,7 @@ static void raiseorlower(client_t *client);
 static void movelim(client_t *client);
 static void movewindow(xcb_drawable_t win, uint16_t x, uint16_t y);
 static client_t *findclient(xcb_drawable_t win);
+static client_t *findclientp(xcb_drawable_t win);
 static void focusnext(void);
 static void setunfocus();
 static void setfocus(client_t *client);
@@ -993,6 +994,19 @@ uint32_t getcolor(const char *colstr)
 }
 
 
+/* Reparent client window to root and set state ti WITHDRAWN */
+void withdraw_client(client_t* client)
+{
+	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
+
+	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
+	PDEBUG("-> and set window to withdrawn state");
+	xcb_reparent_window(conn, client->id, screen->root, 0, 0);
+	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
+		icccm.wm_state, icccm.wm_state, 32, 2, data);
+	xcb_destroy_window(conn, client->parent);
+}
+
 /* Forget everything about client client. */
 void remove_client(client_t *client)
 {
@@ -1002,8 +1016,6 @@ void remove_client(client_t *client)
 	}
 
 	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
-
-	xcb_window_t parent = client->parent;
 
 	if (focuswin == client) focuswin = NULL;
 	if (lastfocuswin == client) lastfocuswin = NULL;
@@ -1021,8 +1033,8 @@ void remove_client(client_t *client)
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);
-	PDEBUG("remove_client: destroying parent window 0x%x\n", parent);
-	xcb_destroy_window(conn, parent);
+	PDEBUG("remove_client: destroying parent window 0x%x\n",
+			client->parent);
 }
 
 /* Forget everything about a client with client->id win. */
@@ -1193,7 +1205,7 @@ void new_win(xcb_window_t win)
 	 * Set up stuff, like borders, add the window to the client list,
 	 * et cetera.
 	 */
-	client_t* client = setup_win(win, false);
+	client_t* client = setup_win(win);
 	if (is_null(client)) {
 		fprintf(stderr, "mcwm: Couldn't set up window. Out of memory.\n");
 		return;
@@ -1370,7 +1382,7 @@ void icccm_update_wm_protocols(client_t* client)
 }
 
 /* Set border colour, width and event mask for window. */
-client_t *setup_win(xcb_window_t win, bool visible)
+client_t *setup_win(xcb_window_t win)
 {
 	item_t *item;
 	client_t *client;
@@ -1443,10 +1455,6 @@ client_t *setup_win(xcb_window_t win, bool visible)
 		PDEBUG("Couldn't get geometry in initial setup of window.\n");
 	}
 
-	if (visible) {
-		client->ignore_unmap++; // for reparent
-		PDEBUG("++ignore_unmap == %d\n", client->ignore_unmap);
-	}
 	reparent(client);
 	setborders(client, conf.borderwidth);
 
@@ -1685,7 +1693,7 @@ bool setup_screen(void)
 		 */
 		if (!attr->override_redirect
 				&& attr->map_state == XCB_MAP_STATE_VIEWABLE) {
-			client = setup_win(children[i], true);
+			client = setup_win(children[i]);
 			// XXX just check for null
 			if (client) {
 				/*
@@ -1753,7 +1761,7 @@ bool setup_screen(void)
 	if (is_null(pointer)) {
 		focuswin = NULL;
 	} else {
-		setfocus(findclient(pointer->child));
+		setfocus(findclientp(pointer->child));
 		destroy(pointer);
 	}
 
@@ -2287,6 +2295,49 @@ void setunfocus()
 }
 
 /*
+ * Find client with client->id win or client->parent 
+ * in global window list.
+ *
+ * Returns client pointer or NULL if not found.
+ */
+
+client_t *findclientp(xcb_drawable_t win)
+{
+	client_t *client;
+
+	if (win == screen->root) {
+		PDEBUG("findclientp(): Root Window\n", win);
+		return NULL;
+	}
+
+	if (focuswin) {
+		if (focuswin->id == win) {
+			PDEBUG("findclientp(): Win: 0x%x (focuswin->id)\n", win);
+			return focuswin;
+		} else if (focuswin->parent == win) {
+			PDEBUG("findclientp(): Win: 0x%x (focuswin->parent)\n", win);
+			return focuswin;
+		}
+	}
+
+	for (item_t *item = winlist; item; item = item->next) {
+		client = item->data;
+		if (win == client->id) {
+			PDEBUG("findclientp(): Win: 0x%x (id)\n ", win);
+			return client;
+		} else if (win == client->parent) {
+			PDEBUG("findclientp(): Win: 0x%x (parent)\n", win);
+			return client;
+		}
+	}
+
+	PDEBUG("findclientp(): unknown window 0x%x\n", win);
+	return NULL;
+}
+
+
+
+/*
  * Find client with client->id win in global window list.
  *
  * Returns client pointer or NULL if not found.
@@ -2300,23 +2351,15 @@ client_t *findclient(xcb_drawable_t win)
 		return NULL;
 	}
 
-	if (focuswin) {
-		if (focuswin->id == win) {
-			PDEBUG("findclient(): Win: 0x%x (focuswin->id)\n", win);
-			return focuswin;
-		} else if (focuswin->parent == win) {
-			PDEBUG("findclient(): Win: 0x%x (focuswin->parent)\n", win);
-			return focuswin;
-		}
+	if (focuswin && focuswin->id == win) {
+		PDEBUG("findclient(): Win: 0x%x (focuswin->id)\n", win);
+		return focuswin;
 	}
 
 	for (item_t *item = winlist; item; item = item->next) {
 		client = item->data;
 		if (win == client->id) {
 			PDEBUG("findclient(): Win: 0x%x (id)\n ", win);
-			return client;
-		} else if (win == client->parent) {
-			PDEBUG("findclient(): Win: 0x%x (parent)\n", win);
 			return client;
 		}
 	}
@@ -3279,7 +3322,11 @@ void handle_error_event(xcb_generic_event_t *ev)
 
 	// TODO this is not a solution indeed
 	if (e->error_code == 3) { // BadWindow
-		remove_client(findclient(e->resource_id));
+		client_t* client = findclientp(e->resource_id);
+		if (client) {
+			withdraw_client(client);
+			remove_client(client);
+		}
 	}
 }
 
@@ -3841,7 +3888,7 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 		 * know about. If not, just keep focus in the old
 		 * window.
 		 */
-		client = findclient(e->event);
+		client = findclientp(e->event);
 		if (client) {
 			if (! is_mode(mode_tab)) {
 				/*
@@ -4088,8 +4135,8 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	xcb_client_message_event_t *e
 		= (xcb_client_message_event_t *) ev;
 
-	client_t *c = findclient(e->window);
-	if (! c) {
+	client_t *client = findclient(e->window);
+	if (! client) {
 		PDEBUG("client_message: don't know about that window yet (0x%x!\n",
 				e->window);
 		return;
@@ -4099,7 +4146,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		PDEBUG("client_message: wm_change_state\n");
 		if (conf.allowicons) {
 			if (e->data.data32[0] == XCB_ICCCM_WM_STATE_ICONIC) {
-				hide(c);
+				hide(client);
 				xcb_flush(conn);
 				return;
 			}
@@ -4109,13 +4156,13 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	if (e->type == ewmh->_NET_CLOSE_WINDOW) {
 		PDEBUG("client_message: net_close_window\n");
 		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) // direct user, pager
-			deletewin(findclient(e->window));
+			deletewin(client);
 		return;
 	} 
 	if (e->type == ewmh->_NET_ACTIVE_WINDOW) {
 		PDEBUG("client_message: net_active_window\n");
 		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) // direct user, pager
-			setfocus(c);
+			setfocus(client);
 		return;
 	}
 	if (e->type == ewmh->_NET_WM_STATE) {
@@ -4150,34 +4197,34 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		switch (action) {
 			case XCB_EWMH_WM_STATE_ADD:
 				PDEBUG(">> add\n");
-				if (fs && !c->maxed) {
-					maximize(c);
+				if (fs && !client->maxed) {
+					maximize(client);
 					break;
 				}
-				if (max_v && !c->vertmaxed) {
-					maxvert(c);
+				if (max_v && !client->vertmaxed) {
+					maxvert(client);
 					break;
 				}
 				break;
 			case XCB_EWMH_WM_STATE_TOGGLE:
 				PDEBUG(">> toggle\n");
 				if (fs) {
-					maximize(c);
+					maximize(client);
 					break;
 				}
 				if (max_v) {
-					maxvert(c);
+					maxvert(client);
 					break;
 				}
 				break;
 			case XCB_EWMH_WM_STATE_REMOVE:
 				PDEBUG(">> remove\n");
-				if (fs && c->maxed) {
-					maximize(c);
+				if (fs && client->maxed) {
+					maximize(client);
 					break;
 				}
-				if (fs && c->vertmaxed) {
-					maxvert(c);
+				if (fs && client->vertmaxed) {
+					maxvert(client);
 					break;
 				}
 				break;
@@ -4267,27 +4314,19 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 
 	client_t *client = findclient(e->window);
 	if (client) {
-		/* don't bother with parent window unmap notifications */
-		if (e->window == client->parent) {
+		/* we await that unmap, do nothing */
+		if (client->ignore_unmap > 0) {
+			client->ignore_unmap--;
+			PDEBUG("--ignore_unmap == %d\n", client->ignore_unmap);
 			return;
 		}
+
 		if (XCB_EVENT_SENT(ev)) {
 			// synthetic event, indicates wanting to withdrawn state
-			// XXX That is still wrong
 			PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);
-			//long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
-			//xcb_change_property(conn, XCB_PROP_MODE_REPLACE, e->window,
-			//	icccm.wm_state, icccm.wm_state, 32, 2, data);
-			return;
 		}
-		if (client->ignore_unmap) {
-			client->ignore_unmap--;
-			PDEBUG("unmap_notify for 0x%x - ignored (#%d)\n", e->window,
-					client->ignore_unmap);
-		} else {
-			PDEBUG("unmap_notify for 0x%x\n", e->window);
-//			remove_client(client);
-		}
+		withdraw_client(client);
+		remove_client(client);
 	}
 }
 
@@ -4313,6 +4352,14 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 		 * under the pointer so we can set the focus proper later.
 		 */
 
+		/* XXX
+		 * We should never ever have a client at this state, right?
+		 *
+		 * */
+		PDEBUG("XXX Should not happen\n");
+		PDEBUG("Destroy parent window if it still exists (0x%x)\n",
+				client->parent);
+		xcb_destroy_window(conn, client->parent);
 		remove_client(client);
 		xcb_flush(conn);
 	}

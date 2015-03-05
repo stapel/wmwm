@@ -1615,18 +1615,31 @@ bool setup_ewmh(void)
 		ewmh->_NET_SUPPORTED,				// root
 		ewmh->_NET_NUMBER_OF_DESKTOPS,		// root
 		ewmh->_NET_CURRENT_DESKTOP,			// root
+		ewmh->_NET_ACTIVE_WINDOW,			// root
+
 		ewmh->_NET_WM_NAME,					// window
 		ewmh->_NET_WM_DESKTOP, 				// window
-		ewmh->_NET_ACTIVE_WINDOW,			// root
+
 		ewmh->_NET_WM_STATE,				// window
-		ewmh->_NET_WM_STATE_STICKY,			// 	option
-		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// 	option
-		ewmh->_NET_WM_STATE_FULLSCREEN,		// 	option
-	//	ewmh_1_4_NET_WM_STATE_FOCUSED,		//	option
+		ewmh->_NET_WM_STATE_STICKY,			// option
+		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// option
+		ewmh->_NET_WM_STATE_FULLSCREEN,		// option
+//		ewmh->_NET_WM_STATE_HIDDEN,			// option
+//		ewmh_1_4_NET_WM_STATE_FOCUSED,		// option
+
 		ewmh->_NET_WM_ALLOWED_ACTIONS,		// window
-		ewmh->_NET_WM_ACTION_MAXIMIZE_VERT,	// 	option
-		ewmh->_NET_WM_ACTION_FULLSCREEN,	//	option
-		ewmh->_NET_SUPPORTING_WM_CHECK		// window
+		ewmh->_NET_WM_ACTION_MAXIMIZE_VERT,	// option
+		ewmh->_NET_WM_ACTION_FULLSCREEN,	// option
+
+		ewmh->_NET_SUPPORTING_WM_CHECK,		// window
+		ewmh->_NET_FRAME_EXTENTS,			// window
+		ewmh->_NET_REQUEST_FRAME_EXTENTS,   // message
+		ewmh->_NET_CLOSE_WINDOW,			// message
+		icccm.wm_change_state,				// message
+		icccm.wm_delete_window,				// message
+		icccm.wm_change_state,				// message
+		icccm.wm_state,						// 
+		icccm.wm_protocols					// 
 	};
 
 	xcb_ewmh_set_supported(ewmh, screen_number,
@@ -4139,9 +4152,46 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		= (xcb_client_message_event_t *) ev;
 
 	client_t *client = findclient(e->window);
+
+#if DEBUG
+	xcb_get_atom_name_reply_t *an_rep;
+
+	an_rep = xcb_get_atom_name_reply(conn,
+			xcb_get_atom_name_unchecked(conn, e->type), NULL);
+
+	if (is_null(an_rep)) {
+		return;
+	} else {
+		char *name = calloc(xcb_get_atom_name_name_length(an_rep) + 10,
+				sizeof(char));
+		strncpy(name, xcb_get_atom_name_name(an_rep),
+				xcb_get_atom_name_name_length(an_rep));
+		PDEBUG("client_message: 0x%x: %s (%d)\n", e->window,
+				name, e->type);
+		destroy(an_rep);
+		destroy(name);
+	}
+#endif
+
+	long r[] = { conf.borderwidth, conf.borderwidth, conf.borderwidth,
+		conf.borderwidth };
+
+	// XXX set this for all and availables
+	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
+		xcb_change_property(
+				conn,
+				XCB_PROP_MODE_REPLACE,
+				e->window,
+				ewmh->_NET_FRAME_EXTENTS,
+				XCB_ATOM_CARDINAL, 32, 4,
+				&r);
+		xcb_flush(conn);
+		return;
+	}
+
 	if (! client) {
-		PDEBUG("client_message: don't know about that window yet (0x%x!\n",
-				e->window);
+		PDEBUG("client_message: unknown window (0x%x), type: %d!\n",
+				e->window, e->type);
 		return;
 	}
 

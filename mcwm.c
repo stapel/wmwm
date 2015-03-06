@@ -3411,7 +3411,6 @@ void handle_map_request(xcb_generic_event_t* ev)
 // XXX test
 void handle_reparent_notify(xcb_generic_event_t *ev)
 {
-	(void)ev;
 #ifdef DEBUG
 	const xcb_reparent_notify_event_t* e = (xcb_reparent_notify_event_t*)ev;
 	// window: the window that has been reparented
@@ -3421,8 +3420,9 @@ void handle_reparent_notify(xcb_generic_event_t *ev)
 			"OR: %d, sent? %d\n",
 			e->event, e->window, e->parent, e->override_redirect,
 			XCB_EVENT_SENT(ev));
+#else
+	(void)ev;
 #endif
-
 }
 
 

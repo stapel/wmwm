@@ -3342,19 +3342,18 @@ void events(void)
 			} else continue; // We found more events. Goto start of loop.
 		}
 
-		PDEBUG("Event: %s (%d, resp: %d, handler: %d)\n",
+		PDEBUG("Event: %s (%d, handler: %d)\n",
 				xcb_event_get_label(XCB_EVENT_RESPONSE_TYPE(ev)),
 				XCB_EVENT_RESPONSE_TYPE(ev),
-				ev->response_type,
 				handler[XCB_EVENT_RESPONSE_TYPE(ev)] ? 1 : 0);
 
-		if (ev->response_type 
+		if (XCB_EVENT_RESPONSE_TYPE(ev)
 				== (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
 			PDEBUG("RANDR screen change notify. Checking outputs.\n");
 			getrandr();
 			destroy(ev);
 			continue;
-		} else if (ev->response_type == shapebase + XCB_SHAPE_NOTIFY) {
+		} else if (XCB_EVENT_RESPONSE_TYPE(ev) == shapebase + XCB_SHAPE_NOTIFY) {
 			xcb_shape_notify_event_t *sev = (xcb_shape_notify_event_t*) ev;
 			set_timestamp(sev->server_time);
 

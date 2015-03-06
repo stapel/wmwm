@@ -3709,6 +3709,10 @@ void handle_key_press(xcb_generic_event_t *ev)
 		/*
 		 * We don't know what to do with this key. Send this key press
 		 * event to the focused window.
+		 *
+		 * XXX
+		 * We should not have received this key because we didn't
+		 * grab it
 		 */
 		xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
 				XCB_EVENT_MASK_NO_EVENT, (char *) e);

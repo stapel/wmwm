@@ -698,8 +698,8 @@ struct modkeycodes getmodkeys(xcb_mod_mask_t modmask)
  */
 void cleanup(int code)
 {
-	xcb_set_input_focus(conn, XCB_NONE,
-			XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
+	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE,
+			get_timestamp());
 	if (ewmh) {
 		// XXX delete atoms clutched to windows
 //		xcb_delete_property(conn, window,  ewmh->_NET_);
@@ -2445,8 +2445,9 @@ void setfocus(client_t *client)
 		PDEBUG("setfocus: client was NULL! \n");
 
 		focuswin = NULL;
-		xcb_set_input_focus(conn, XCB_NONE, XCB_INPUT_FOCUS_POINTER_ROOT,
+		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE,
 				get_timestamp());
+		PDEBUG("xcb_set_input_focus: XCB_INPUT_FOCUS_POINTER_ROOT\n");
 //		xcb_set_input_focus(conn, XCB_NONE, XCB_INPUT_FOCUS_NONE,
 //				get_timestamp());
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
@@ -2484,6 +2485,7 @@ void setfocus(client_t *client)
 
 	/* Set new input focus. - XXX both? */
 	if (client->allow_focus) {
+		PDEBUG("xcb_set_input_focus: 0x%x\n", client->id);
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT, client->id,
 				get_timestamp());
 	}
@@ -3307,10 +3309,6 @@ void events(void)
 	}
 
 	for (sigcode = 0; 0 == sigcode;) {
-		/* Prepare for select(). */
-		FD_ZERO(&in);
-		FD_SET(fd, &in);
-
 		/*
 		 * Check for events, again and again. When poll returns NULL
 		 * (and it does that a lot), we block on select() until the
@@ -3320,60 +3318,93 @@ void events(void)
 		 * select() will return if we were interrupted by a signal. We
 		 * like that.
 		 */
-		ev = xcb_poll_for_event(conn);
 
-		if (is_null(ev)) {
-			/*
-			 * Check if we have an unrecoverable connection error,
-			 * like a disconnected X server.
-			 */
-			if (xcb_connection_has_error(conn)) {
-				cleanup(1);
-			}
+		FD_ZERO(&in); FD_SET(fd, &in);
 
-			// XXX reverse the logic here, put it before poll_for_event
-			if (select(fd + 1, &in, NULL, NULL, NULL) == -1) {
-				// We received a signal. Break out of loop.
-				if (errno == EINTR)
-					break;
+		if (select(fd + 1, &in, NULL, NULL, NULL) == -1) {
+			// We received a signal. Break out of loop.
+			if (errno == EINTR)
+				break;
 
-				// Something was seriously wrong with select().
-				fprintf(stderr, "mcwm: select failed.");
-				cleanup(1);
-			} else continue; // We found more events. Goto start of loop.
+			// Something was seriously wrong with select().
+			fprintf(stderr, "mcwm: select failed.");
+			cleanup(1);
 		}
 
-		PDEBUG("Event: %s (%d, handler: %d)\n",
-				xcb_event_get_label(XCB_EVENT_RESPONSE_TYPE(ev)),
-				XCB_EVENT_RESPONSE_TYPE(ev),
-				handler[XCB_EVENT_RESPONSE_TYPE(ev)] ? 1 : 0);
+		while (ev = xcb_poll_for_event(conn)) {
+			PDEBUG("Event: %s (%d, handler: %d)\n",
+					xcb_event_get_label(XCB_EVENT_RESPONSE_TYPE(ev)),
+					XCB_EVENT_RESPONSE_TYPE(ev),
+					handler[XCB_EVENT_RESPONSE_TYPE(ev)] ? 1 : 0);
 
-		if (XCB_EVENT_RESPONSE_TYPE(ev)
-				== (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
-			PDEBUG("RANDR screen change notify. Checking outputs.\n");
-			getrandr();
-			destroy(ev);
-			continue;
-		} else if (XCB_EVENT_RESPONSE_TYPE(ev) == shapebase + XCB_SHAPE_NOTIFY) {
-			xcb_shape_notify_event_t *sev = (xcb_shape_notify_event_t*) ev;
-			set_timestamp(sev->server_time);
+			if (XCB_EVENT_RESPONSE_TYPE(ev)
+					== (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
+				PDEBUG("RANDR screen change notify. Checking outputs.\n");
+				getrandr();
+			} else if (XCB_EVENT_RESPONSE_TYPE(ev) == shapebase + XCB_SHAPE_NOTIFY) {
+				xcb_shape_notify_event_t *sev = (xcb_shape_notify_event_t*) ev;
+				set_timestamp(sev->server_time);
 
-			PDEBUG("SHAPE notify (win: 0x%x, shaped: %d)\n", sev->affected_window, sev->shaped);
-			if (sev->shaped) {
-				client_t* client = findclient(sev->affected_window);
-				if (client) {
-					set_shape(client);
+				PDEBUG("SHAPE notify (win: 0x%x, shaped: %d)\n", sev->affected_window, sev->shaped);
+				if (sev->shaped) {
+					client_t* client = findclient(sev->affected_window);
+					if (client) {
+						set_shape(client);
+					}
 				}
+			} else if (handler[XCB_EVENT_RESPONSE_TYPE(ev)]) {
+				handler[XCB_EVENT_RESPONSE_TYPE(ev)](ev);
 			}
+			xcb_flush(conn);
 			destroy(ev);
-			continue;
 		}
 
-		if (handler[XCB_EVENT_RESPONSE_TYPE(ev)]) {
-			handler[XCB_EVENT_RESPONSE_TYPE(ev)](ev);
-			xcb_flush(conn);
+		/*
+		 * Check if we have an unrecoverable connection error,
+		 * like a disconnected X server.
+		 */
+		if (xcb_connection_has_error(conn)) {
+			cleanup(1);
 		}
-		destroy(ev);
+
+#if 0
+			xcb_get_input_focus_reply_t* rep = 
+				xcb_get_input_focus_reply(
+						conn,
+						xcb_get_input_focus_unchecked(conn),
+						NULL);
+			if (is_null(rep)) {
+				PDEBUG("Could not get input_focus\n");
+			} else {
+				PDEBUG("get_input_focus: focus=0x%x revert_to=",
+						rep->focus, rep->revert_to);
+				switch(rep->revert_to) {
+					case XCB_INPUT_FOCUS_NONE:
+						fprintf(stderr, "XCB_INPUT_FOCUS_NONE");
+						break;
+					case XCB_INPUT_FOCUS_POINTER_ROOT:
+						fprintf(stderr, "XCB_INPUT_FOCUS_POINTER_ROOT");
+						break;
+					case XCB_INPUT_FOCUS_PARENT:
+						fprintf(stderr, "XCB_INPUT_FOCUS_PARENT");
+						break;
+					case XCB_INPUT_FOCUS_FOLLOW_KEYBOARD:
+						fprintf(stderr, "XCB_INPUT_FOCUS_FOLLOW_KEYBOARD");
+						break;
+					default:
+						fprintf(stderr, "unknown");
+						break;
+				}
+				fprintf(stderr, "\n");
+				free(rep);
+//				if (rep->focus == 0) {
+//					PDEBUG("Totally lost focus, counteracting!\n");
+//					xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
+//							screen->root, XCB_CURRENT_TIME);
+//					continue;
+//				}
+			}
+#endif
 	}
 }
 

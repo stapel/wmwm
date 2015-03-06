@@ -27,7 +27,7 @@ endif
 
 
 LDFLAGS += $(ETCFLAGS) -L/usr/local/lib -lxcb -lxcb-ewmh -lxcb-randr\
-		   -lxcb-keysyms -lxcb-icccm -lxcb-util
+		   -lxcb-keysyms -lxcb-icccm -lxcb-util -lxcb-shape
 
 ifeq ($(coverage),1)
 	CFLAGS += -coverage

@@ -74,6 +74,7 @@
 #include <xcb/xproto.h>
 #include <xcb/xcb_aux.h>
 #include <xcb/randr.h>
+#include <xcb/shape.h>
 #include <xcb/xcb_event.h>
 
 #include <xcb/xinput.h>
@@ -295,6 +296,7 @@ xcb_ewmh_connection_t *ewmh;		/* EWMH Connection */
 xcb_atom_t ewmh_1_4_NET_WM_STATE_FOCUSED;
 
 int randrbase;					/* Beginning of RANDR extension events. */
+int shapebase;					/* Beginning of SHAPE extension events. */
 const unsigned workspaces = WORKSPACES;
 
 uint32_t curws = 0;				/* Current workspace. */
@@ -466,6 +468,7 @@ static void remove_client(client_t *client);
 static void fitonscreen(client_t *client);
 static void new_win(xcb_window_t win);
 static client_t *setup_win(xcb_window_t win);
+static void set_shape(client_t* client);
 
 
 static xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym,
@@ -1463,6 +1466,11 @@ client_t *setup_win(xcb_window_t win)
 	reparent(client);
 	setborders(client, conf.borderwidth);
 
+	if (shapebase != -1) {
+		xcb_shape_select_input(conn, client->id, 1);
+		set_shape(client);
+	}
+
 	// local used information 
 	icccm_update_wm_hints(client);
 	icccm_update_wm_normal_hints(client);
@@ -1790,6 +1798,38 @@ bool setup_screen(void)
 	return true;
 }
 
+void set_shape(client_t* client)
+{
+	/* XXX
+	 * disable borders, they might appear
+	 */
+	xcb_shape_query_extents_reply_t *extents;
+	xcb_generic_error_t* e;
+
+	extents = xcb_shape_query_extents_reply(conn, xcb_shape_query_extents(conn, client->id), &e);
+	if (! e && extents->bounding_shaped) {
+		PDEBUG("0x%x is shaped, shaping parent\n", client->id);
+		xcb_shape_combine(conn, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_BOUNDING, XCB_SHAPE_SK_BOUNDING,
+				client->parent, 0, 0, client->id);
+	}
+	free(extents);
+}
+
+/* 
+ * Setup SHAPE extension
+ */
+int setup_shape(void)
+{
+	const xcb_query_extension_reply_t *extension;
+	extension = xcb_get_extension_data(conn, &xcb_shape_id);
+	if (!extension->present) {
+		printf("No SHAPE extension.\n");
+		return -1;
+	} else {
+		return extension->first_event;
+	}
+}
+
 /*
  * Set up RANDR extension. Get the extension base and subscribe to
  * events.
@@ -1801,7 +1841,7 @@ int setup_randr(void)
 
 	extension = xcb_get_extension_data(conn, &xcb_randr_id);
 	if (!extension->present) {
-		printf("No RAND extensionR.\n");
+		printf("No RANDR extension.\n");
 		return -1;
 	} else {
 		getrandr();
@@ -3302,15 +3342,29 @@ void events(void)
 			} else continue; // We found more events. Goto start of loop.
 		}
 
-		PDEBUG("Event: %s (%d, handler: %d)\n",
+		PDEBUG("Event: %s (%d, resp: %d, handler: %d)\n",
 				xcb_event_get_label(XCB_EVENT_RESPONSE_TYPE(ev)),
 				XCB_EVENT_RESPONSE_TYPE(ev),
+				ev->response_type,
 				handler[XCB_EVENT_RESPONSE_TYPE(ev)] ? 1 : 0);
 
 		if (ev->response_type 
 				== (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
 			PDEBUG("RANDR screen change notify. Checking outputs.\n");
 			getrandr();
+			destroy(ev);
+			continue;
+		} else if (ev->response_type == shapebase + XCB_SHAPE_NOTIFY) {
+			xcb_shape_notify_event_t *sev = (xcb_shape_notify_event_t*) ev;
+			set_timestamp(sev->server_time);
+
+			PDEBUG("SHAPE notify (win: 0x%x, shaped: %d)\n", sev->affected_window, sev->shaped);
+			if (sev->shaped) {
+				client_t* client = findclient(sev->affected_window);
+				if (client) {
+					set_shape(client);
+				}
+			}
 			destroy(ev);
 			continue;
 		}
@@ -4691,6 +4745,9 @@ int main(int argc, char **argv)
 
 	/* Check for RANDR extension and configure. */
 	randrbase = setup_randr();
+
+	/* Check for SHAPE extension */
+	shapebase = setup_shape();
 
 	/* Loop over all clients and set up stuff. */
 	if (! setup_screen()) {

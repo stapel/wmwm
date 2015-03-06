@@ -32,7 +32,14 @@
  *
  * Can be set from command line with "-t program".
  */
-#define TERMINAL "/usr/bin/uxterm"
+#define TERMINAL "/usr/bin/urxvt"
+
+/*
+ * Start this program when pressing MODKEY + USERKEY_MENU. Needs
+ * to be in $PATH.
+ */
+
+#define MENU "/home/argon/bin/dmenu"
 
 /*
  * Do we allow windows to be iconified? Set to true if you want this

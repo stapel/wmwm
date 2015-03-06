@@ -382,6 +382,7 @@ struct modkeycodes {
 struct conf {
 	int borderwidth;			/* Do we draw borders? If so, how large? */
 	char *terminal;				/* Path to terminal to start. */
+	char *menu;					/* Path to menu to start. */
 	uint32_t focuscol;			/* Focused border colour. */
 	uint32_t unfocuscol;		/* Unfocused border colour.  */
 	uint32_t fixedcol;			/* Fixed windows border colour. */
@@ -550,7 +551,7 @@ static void   		set_mode(wm_mode_t modus) 	{ MCWM_mode = modus; }
 static wm_mode_t	get_mode(void)				{ return MCWM_mode; }
 static bool  		is_mode(wm_mode_t modus)	{ return (get_mode() == modus); }
 
-static xcb_timestamp_t get_timestamp() { return current_time++; }
+static xcb_timestamp_t get_timestamp() { return current_time; }
 static void set_timestamp(xcb_timestamp_t t) { current_time = t; }
 static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME) current_time = t; }
 
@@ -3696,6 +3697,12 @@ void handle_key_press(xcb_generic_event_t *ev)
 			break;
 		}
 	}
+
+	if (is_mode(mode_tab) && key != KEY_TAB) {
+		/* First finish tabbing around. Then deal with the next key. */
+		finishtabbing();
+	}
+
 	if (key == KEY_MAX) {
 		PDEBUG("key_press: Unknown key pressed.\n");
 
@@ -3709,10 +3716,6 @@ void handle_key_press(xcb_generic_event_t *ev)
 		return;
 	}
 
-	if (is_mode(mode_tab) && key != KEY_TAB) {
-		/* First finish tabbing around. Then deal with the next key. */
-		finishtabbing();
-	}
 
 	/* Is it CTRLd? */
 	if (e->state & CONTROLMOD) {
@@ -3746,7 +3749,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_M:		/* m */
-					start("/home/argon/bin/dmenu");
+					start(conf.menu);
 					break;
 
 				case KEY_F:		/* f */
@@ -3877,7 +3880,6 @@ void handle_key_press(xcb_generic_event_t *ev)
 		xcb_flush(conn);
 		return;
 	}
-	PDEBUG("key_press: leaving at the end!\n");
 	/* CONTROLMOD */
 }								/* handle_keypress() */
 
@@ -4656,6 +4658,7 @@ int main(int argc, char **argv)
 
 	conf.borderwidth = BORDERWIDTH;
 	conf.terminal = TERMINAL;
+	conf.menu = MENU;
 	conf.allowicons = ALLOWICONS;
 	focuscol = FOCUSCOL;
 	unfocuscol = UNFOCUSCOL;

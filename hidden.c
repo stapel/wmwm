@@ -178,16 +178,12 @@ int findhidden(void)
 	int i;
 	int len;
 
-	int ws;
 	char* name;
 	int name_len;
 
 	xcb_window_t *children;
 	xcb_get_window_attributes_reply_t *attr;
 	uint32_t state;
-	xcb_get_property_cookie_t cookie;
-	xcb_icccm_get_text_property_reply_t prop;
-	xcb_generic_error_t *error;
 
 	/* Get all children. */
 	reply = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->root), 0);

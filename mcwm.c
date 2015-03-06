@@ -4031,6 +4031,7 @@ void handle_configure_notify(xcb_generic_event_t *ev)
 				 * XCB_RANDR_SCREEN_CHANGE_NOTIFY event.
 				 */
 				arrangewindows();
+				xcb_flush(conn);
 			}
 		}
 	}

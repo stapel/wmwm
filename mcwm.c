@@ -520,7 +520,10 @@ static void events(void);
 static void printhelp(void);
 static void sigcatch(int sig);
 static xcb_atom_t get_atom(char *atom_name);
+
+#if DEBUG
 static char* get_atomname(xcb_atom_t atom);
+#endif
 
 
 static void get_mondim(monitor_t* monitor, xcb_rectangle_t* sp);

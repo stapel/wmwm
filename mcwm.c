@@ -3294,15 +3294,6 @@ void handle_error_event(xcb_generic_event_t *ev)
 			e->resource_id,
 			e->sequence,
 			e->full_sequence);
-
-	// TODO this is not a solution indeed
-	if (e->error_code == 3) { // BadWindow
-		client_t* client = findclientp(e->resource_id);
-		if (client) {
-			xcb_destroy_window(conn, client->parent);
-			remove_client(client);
-		}
-	}
 }
 
 void handle_map_request(xcb_generic_event_t* ev)

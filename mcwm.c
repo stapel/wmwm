@@ -240,7 +240,6 @@ typedef struct client {
 
 	/* Those will be updated on property-notify */
 	bool allow_focus;			/* */
-	bool take_focus;
 	bool use_delete;
 	bool ewmh_state_set;
 
@@ -386,9 +385,6 @@ struct icccm {
 	xcb_atom_t wm_change_state;
 	xcb_atom_t wm_state;
 	xcb_atom_t wm_protocols;		/* WM_PROTOCOLS.  */
-
-	xcb_atom_t wm_take_focus;
-
 } icccm;
 
 static xcb_atom_t ewmh_allowed_actions[2] = { XCB_ATOM_NONE, XCB_ATOM_NONE };
@@ -1305,18 +1301,14 @@ void icccm_update_wm_protocols(client_t* client)
 	cookie = xcb_icccm_get_wm_protocols_unchecked(conn, client->id,
 			icccm.wm_protocols);
 
-	client->use_delete = client->take_focus = false;
+	client->use_delete = false;
 
 	if (xcb_icccm_get_wm_protocols_reply(conn, cookie, &protocols, NULL)) {
 		for (uint32_t i = 0; i < protocols.atoms_len; i++) {
 			if (protocols.atoms[i] == icccm.wm_delete_window) {
 				client->use_delete = true;
-				continue;
+				break;
 			} 
-			if (protocols.atoms[i] == icccm.wm_take_focus) {
-				client->take_focus = true;
-				continue;
-			}
 		}
 		xcb_icccm_get_wm_protocols_reply_wipe(&protocols);
 	}
@@ -1374,7 +1366,6 @@ client_t *setup_win(xcb_window_t win)
 
 	client->allow_focus = true;
 	client->use_delete = true;
-	client->take_focus = false;
 	client->ewmh_state_set = false;
 
 	client->killed = 0;
@@ -1522,7 +1513,6 @@ bool setup_keys(void)
 bool setup_icccm(void)
 {
 	icccm.wm_delete_window	= get_atom("WM_DELETE_WINDOW");
-	icccm.wm_take_focus		= get_atom("WM_TAKE_FOCUS");
 	icccm.wm_change_state	= get_atom("WM_CHANGE_STATE");
 	icccm.wm_state			= get_atom("WM_STATE");
 	icccm.wm_protocols		= get_atom("WM_PROTOCOLS");
@@ -3076,31 +3066,6 @@ void botright(void)
 
 	xcb_flush(conn);
 }
-
-
-
-#if 0
-/*
- * Send message to ask the client that it may take focus now
- */
-void send_take_focus(client_t* client)
-{
-	/* take_focus is not needed, we focus them */
-	if (client->take_focus) {
-		xcb_client_message_event_t ev = {
-			.response_type = XCB_CLIENT_MESSAGE,
-			.format = 32,
-			.sequence = 0,
-			.window = client->parent,
-			.type = icccm.wm_protocols,
-			.data.data32 = { icccm.wm_take_focus, get_timestamp() }
-		};
-
-		xcb_send_event(conn, false, client->id,
-				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
-	}
-}
-#endif
 
 /*
  * End program

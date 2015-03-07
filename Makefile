@@ -22,7 +22,7 @@ else
 endif
 
 ifeq ($(debug),1)
-	CFLAGS += -DDEBUG
+	CFLAGS += -DDEBUG -Wno-format-extra-args
 endif
 
 

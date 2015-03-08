@@ -39,6 +39,7 @@ xcb_atom_t wm_icon_name;
 
 bool printcommand = false;
 xcb_ewmh_connection_t *ewmh;
+int scrno;
 
 static uint32_t get_wm_state(xcb_drawable_t win);
 static int get_wm_name(xcb_window_t win, char** string, int* len);
@@ -179,72 +180,48 @@ int get_wm_name_ewmh(xcb_window_t win, char **string, int* len)
  */
 int findhidden(void)
 {
-	xcb_query_tree_reply_t *reply;
-	int i;
-	int len;
+	uint32_t i;
+	uint32_t len;
 
 	char* name;
 	int name_len;
 
-	xcb_window_t *children;
+	xcb_window_t id;
+
+	xcb_get_property_cookie_t  p;
 	xcb_get_window_attributes_reply_t *attr;
 	uint32_t state;
+	xcb_generic_error_t* error;
 
-	/* Get all children. */
-	reply = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->root), 0);
-	if (NULL == reply) {
-		return -1;
+	xcb_ewmh_get_windows_reply_t clients;
+
+	/* Get windows listed in _NET_CLIENT_LIST */
+
+	p = xcb_ewmh_get_client_list_unchecked(ewmh, scrno);
+	if (! xcb_ewmh_get_client_list_reply(ewmh, p, &clients, NULL)) {
+		return 0;
 	}
 
-	len = xcb_query_tree_children_length(reply);
-	children = xcb_query_tree_children(reply);
-
 	/* List all hidden windows on this root. */
-	for (i = 0; i < len; i++) {
-		attr = xcb_get_window_attributes_reply(conn,
-											xcb_get_window_attributes(conn,
-													children
-													[i]),
-											NULL);
-
-
-		if (!attr) {
-			fprintf(stderr, "Couldn't get attributes for window %d.",
-					children[i]);
-			continue;
-		}
-
-		/*
-		 * Don't bother windows in override redirect mode.
-		 *
-		 * This mode means they wouldn't have been reported to us
-		 * with a MapRequest if we had been running, so in the
-		 * normal case we wouldn't have seen them.
-		 */
-		if (!attr->override_redirect) {
-			state = get_wm_state(children[i]);
-			if (state == XCB_ICCCM_WM_STATE_ICONIC) {
-				printf("#%d\t", ewmh_get_workspace(children[i]));
-				if (get_wm_name(children[i], &name, &name_len) != 0) {
-					printf("%s\n", name);
-					free(name);
-				} else {
-					printf("unnamed window (0x%x)\n", children[i]);
-				}
+	for (i = 0; i < clients.windows_len; i++) {
+		id = (clients.windows)[i];
+		state = get_wm_state(id);
+		if (state == XCB_ICCCM_WM_STATE_ICONIC) {
+			printf("#%d\t", ewmh_get_workspace(id));
+			if (get_wm_name(id, &name, &name_len) != 0) {
+				printf("%s\n", name);
+				free(name);
+			} else {
+				printf("unnamed window (0x%x)\n", id);
 			}
 		}
-		/* if not override redirect */
-		free(attr);
-	}							/* for */
-
-	free(reply);
-
+	}
+//	xcb_ewmh_get_windows_reply_wipe(clients);
 	return 0;
 }
 
 void init(void)
 {
-	int scrno;
 	xcb_screen_iterator_t iter;
 
 	conn = xcb_connect(NULL, &scrno);

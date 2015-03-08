@@ -1261,9 +1261,6 @@ void icccm_update_wm_normal_hints(client_t* client)
 	if (hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC) {
 		client->width_inc = hints.width_inc;
 		client->height_inc = hints.height_inc;
-
-		PDEBUG("widht_inc %d\nheight_inc %d\n", client->width_inc,
-				client->height_inc);
 	}
 
 	if (hints.flags & XCB_ICCCM_SIZE_HINT_P_ASPECT) {
@@ -1271,8 +1268,6 @@ void icccm_update_wm_normal_hints(client_t* client)
 				(hints.min_aspect_den == hints.max_aspect_den)) {
 			client->aspect_num = hints.min_aspect_num;
 			client->aspect_den = hints.min_aspect_den;
-			PDEBUG("aspect_num %d\naspect_den %d\n", client->aspect_num,
-				client->aspect_den);
 		}
 	}
 
@@ -1280,21 +1275,6 @@ void icccm_update_wm_normal_hints(client_t* client)
 		client->base_width = hints.base_width;
 		client->base_height = hints.base_height;
 	}
-
-	/* ICCCM 4.1.2.3
-	 * "If a base size is not provided, the minimum size is to be used in its place and vice versa."
-	 */
-	/* XXX maybe
-	if (client->base_width == 0)
-		client->base_width = client->min_width;
-	else if (client->min_width == 0)
-		client->min_width = client->base_width;
-
-	if (client->base_height == 0)
-		client->base_height = client->min_height;
-	else if (client->min_height == 0)
-		client->min_height = client->base_height;
-	*/
 }
 
 /*

@@ -684,8 +684,8 @@ struct modkeycodes getmodkeys(xcb_mod_mask_t modmask)
  */
 void cleanup(int code)
 {
-	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE,
-			get_timestamp());
+	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
+			XCB_WINDOW_NONE, get_timestamp());
 	if (ewmh) {
 		/* TODO * delete atoms */
 		xcb_ewmh_connection_wipe(ewmh);
@@ -1204,7 +1204,7 @@ void new_win(xcb_window_t win)
 	 * Move cursor into the middle of the window so we don't lose the
 	 * pointer to another window.
 	 */
-	xcb_warp_pointer(conn, XCB_NONE, win, 0, 0, 0, 0,
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, win, 0, 0, 0, 0,
 			client->width / 2, client->height / 2);
 
 	xcb_flush(conn);
@@ -2174,7 +2174,7 @@ void movewindow(xcb_drawable_t win, uint16_t x, uint16_t y)
 {
 	uint32_t values[2];
 
-	if (screen->root == win || XCB_NONE == win) {
+	if (win == screen->root || win == XCB_WINDOW_NONE) {
 		/* Can't move root. */
 		return;
 	}
@@ -2257,7 +2257,7 @@ void focusnext(void)
 
 		xcb_configure_window(conn, client->parent,
 				XCB_CONFIG_WINDOW_STACK_MODE, values);
-		xcb_warp_pointer(conn, XCB_NONE, client->id, 0, 0, 0, 0,
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->id, 0, 0, 0, 0,
 				client->width / 2, client->height / 2);
 		setfocus(client);
 		xcb_flush(conn);
@@ -2375,8 +2375,8 @@ void setfocus(client_t *client)
 		PDEBUG("setfocus: client was NULL! \n");
 
 		focuswin = NULL;
-		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT, XCB_NONE,
-				get_timestamp());
+		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
+				XCB_WINDOW_NONE, get_timestamp());
 		PDEBUG("xcb_set_input_focus: XCB_INPUT_FOCUS_POINTER_ROOT\n");
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
 	
@@ -2595,7 +2595,7 @@ void resizestep(client_t *client, char direction)
 		ewmh_update_state(client);
 	}
 
-	xcb_warp_pointer(conn, XCB_NONE, client->id, 0, 0, 0, 0,
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->id, 0, 0, 0, 0,
 			client->width / 2, client->height / 2);
 	xcb_flush(conn);
 }
@@ -2688,7 +2688,7 @@ void movestep(client_t *client, char direction)
 	if (start_x > 0 - conf.borderwidth && start_x < client->width
 			+ conf.borderwidth && start_y > 0 - conf.borderwidth && start_y
 			< client->height + conf.borderwidth) {
-		xcb_warp_pointer(conn, XCB_NONE, client->id, 0, 0, 0, 0,
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->id, 0, 0, 0, 0,
 				start_x, start_y);
 		xcb_flush(conn);
 	}
@@ -2727,7 +2727,7 @@ void unmax(client_t *client)
 		setborders(client->parent, conf.borderwidth);
 	}
 	/* Warp pointer to window or we might lose it. */
-	xcb_warp_pointer(conn, XCB_NONE, client->id, 0, 0, 0, 0,
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->id, 0, 0, 0, 0,
 			client->width / 2, client->height / 2);
 
 	xcb_flush(conn);
@@ -2978,7 +2978,8 @@ void topleft(void)
 	focuswin->y = mon.y;
 
 	movewindow(focuswin->parent, focuswin->x, focuswin->y);
-	xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0, 0, 0, 0, pointx, pointy);
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->id,
+			0, 0, 0, 0, pointx, pointy);
 
 	xcb_flush(conn);
 }
@@ -3005,7 +3006,8 @@ void topright(void)
 	focuswin->y = mon.y;
 
 	movewindow(focuswin->parent, focuswin->x, focuswin->y);
-	xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0, 0, 0, 0, pointx, pointy);
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->id,
+			0, 0, 0, 0, pointx, pointy);
 
 	xcb_flush(conn);
 }
@@ -3032,7 +3034,8 @@ void botleft(void)
 	focuswin->y = mon.y + mon.height - (focuswin->height + conf.borderwidth * 2);
 
 	movewindow(focuswin->parent, focuswin->x, focuswin->y);
-	xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0, 0, 0, 0, pointx, pointy);
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->id,
+			0, 0, 0, 0, pointx, pointy);
 
 	xcb_flush(conn);
 }
@@ -3061,7 +3064,8 @@ void botright(void)
 		- (focuswin->height + conf.borderwidth * 2);
 
 	movewindow(focuswin->parent, focuswin->x, focuswin->y);
-	xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0, 0, 0, 0, pointx, pointy);
+	xcb_warp_pointer(conn, XCB_WINDOW, focuswin->id,
+			0, 0, 0, 0, pointx, pointy);
 
 	xcb_flush(conn);
 }
@@ -3122,7 +3126,8 @@ void prevscreen(void)
 	fitonscreen(focuswin);
 	movelim(focuswin);
 
-	xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0, 0, 0, 0, 0, 0);
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->id,
+			0, 0, 0, 0, 0, 0);
 	xcb_flush(conn);
 }
 
@@ -3146,7 +3151,8 @@ void nextscreen(void)
 	fitonscreen(focuswin);
 	movelim(focuswin);
 
-	xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0, 0, 0, 0, 0, 0);
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->id,
+			0, 0, 0, 0, 0, 0);
 	xcb_flush(conn);
 }
 
@@ -3154,48 +3160,41 @@ void nextscreen(void)
 void configwin(xcb_window_t win, uint16_t old_mask, winconf_t wc)
 {
 	uint32_t values[7];
-	int i = -1;
+	int i = 0;
 
 	uint16_t mask = 0;
 
-	// ??? XXX mask ?
 	if (old_mask & XCB_CONFIG_WINDOW_X) {
 		mask |= XCB_CONFIG_WINDOW_X;
-		i++;
-		values[i] = wc.x;
+		values[i++] = wc.x;
 	}
 
 	if (old_mask & XCB_CONFIG_WINDOW_Y) {
 		mask |= XCB_CONFIG_WINDOW_Y;
-		i++;
-		values[i] = wc.y;
+		values[i++] = wc.y;
 	}
 
 	if (old_mask & XCB_CONFIG_WINDOW_WIDTH) {
 		mask |= XCB_CONFIG_WINDOW_WIDTH;
-		i++;
-		values[i] = wc.width;
+		values[i++] = wc.width;
 	}
 
 	if (old_mask & XCB_CONFIG_WINDOW_HEIGHT) {
 		mask |= XCB_CONFIG_WINDOW_HEIGHT;
-		i++;
-		values[i] = wc.height;
+		values[i++] = wc.height;
 	}
 
 	if (old_mask & XCB_CONFIG_WINDOW_SIBLING) {
 		mask |= XCB_CONFIG_WINDOW_SIBLING;
-		i++;
-		values[i] = wc.sibling;
+		values[i++] = wc.sibling;
 	}
 
 	if (old_mask & XCB_CONFIG_WINDOW_STACK_MODE) {
 		mask |= XCB_CONFIG_WINDOW_STACK_MODE;
-		i++;
-		values[i] = wc.stackmode;
+		values[i++] = wc.stackmode;
 	}
 
-	if (i != -1) {
+	if (i > 0) {
 		xcb_configure_window(conn, win, mask, values);
 	}
 }
@@ -3215,7 +3214,7 @@ void events(void)
 		cleanup(1);
 	}
 
-	for (sigcode = 0; 0 == sigcode;) {
+	for (sigcode = 0; sigcode == 0;) {
 		/*
 		 * Check for events, again and again. When poll returns NULL
 		 * (and it does that a lot), we block on select() until the
@@ -3233,7 +3232,6 @@ void events(void)
 			if (errno == EINTR)
 				break;
 
-			// Something was seriously wrong with select().
 			perror("mcwm select");
 			cleanup(1);
 		}
@@ -3418,7 +3416,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 
 			set_mode(mode_resize);
 			/* Warp pointer to lower right. */
-			xcb_warp_pointer(conn, XCB_NONE, focuswin->id, 0,
+			xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->id, 0,
 					0, 0, 0, focuswin->width,
 					focuswin->height);
 		}

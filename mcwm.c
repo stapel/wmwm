@@ -2280,7 +2280,6 @@ void setunfocus()
 	/* Set new border colour. */
 	values[0] = conf.unfocuscol;
 	xcb_change_window_attributes(conn, focuswin->parent, XCB_CW_BORDER_PIXEL, values);
-	xcb_flush(conn); // XXX ?
 }
 
 /*
@@ -2416,8 +2415,6 @@ void setfocus(client_t *client)
 
 	/* Remember the new window as the current focused window. */
 	focuswin = client;
-
-	xcb_flush(conn);
 }
 
 int start(char *program)
@@ -4092,14 +4089,18 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	}
 	if (e->type == ewmh->_NET_CLOSE_WINDOW) {
 		PDEBUG("client_message: net_close_window\n");
-		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) // direct user, pager
+		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) { // direct user, pager 
 			deletewin(client);
+			xcb_flush(conn);
+		}
 		return;
 	} 
 	if (e->type == ewmh->_NET_ACTIVE_WINDOW) {
 		PDEBUG("client_message: net_active_window\n");
-		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) // direct user, pager
+		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) { // direct user, pager
 			setfocus(client);
+			xcb_flush(conn);
+		}
 		return;
 	}
 	if (e->type == ewmh->_NET_WM_STATE) {

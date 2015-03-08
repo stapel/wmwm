@@ -1740,7 +1740,9 @@ void set_frame_extents(xcb_window_t win, int width)
 			XCB_ATOM_CARDINAL, 32, 4, &data);
 }
 
-
+/*
+ * Fit frame window to shape of client window if neccessary
+ */
 void set_shape(client_t* client)
 {
 	/* XXX
@@ -1751,7 +1753,7 @@ void set_shape(client_t* client)
 
 	extents = xcb_shape_query_extents_reply(conn, xcb_shape_query_extents(conn, client->id), &e);
 	if (! e && extents->bounding_shaped) {
-		PDEBUG("0x%x is shaped, shaping parent\n", client->id);
+		PDEBUG("0x%x is shaped, shaping frame\n", client->id);
 		xcb_shape_combine(conn, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_BOUNDING, XCB_SHAPE_SK_BOUNDING,
 				client->frame, 0, 0, client->id);
 	}
@@ -3975,8 +3977,12 @@ void handle_configure_request(xcb_generic_event_t *ev)
 
 			if (e->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
 				PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
-				// XXX Determine who is allowed to
-				setborders(client->frame, e->border_width);
+				if (e->border_width != 0 && ! client->maxed) {
+					setborders(client->frame, conf.borderwidth);
+				} else {
+					setborders(client->frame, 0);
+				}
+				else 
 				set_frame_extents(client->id, e->border_width);
 			}
 		}
@@ -4069,7 +4075,6 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		/*
 		 * Unmapped window. Just pass all options except border
 		 * width.
-		 * XXX we do that nevertheless, dont like uninitialized data
 		 */
 		wc.x = e->x;
 		wc.y = e->y;
@@ -4079,7 +4084,8 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		wc.stackmode = e->stack_mode;
 		wc.borderwidth = e->border_width;
 
-		configwin(e->window, e->value_mask, wc);
+		configwin(e->window,
+				e->value_mask & ~XCB_CONFIG_WINDOW_BORDER_WIDTH, wc);
 	}
 	xcb_flush(conn);
 }

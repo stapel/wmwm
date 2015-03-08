@@ -497,7 +497,7 @@ static void resizestep(client_t *client, char direction);
 static void mousemove(client_t *client, int rel_x, int rel_y);
 static void mouseresize(client_t *client, int rel_x, int rel_y);
 static void movestep(client_t *client, char direction);
-static void setborders(client_t *client, int width);
+static void setborders(xcb_drawable_t win, int width);
 static void unmax(client_t *client);
 static void maximize(client_t *client);
 static void maxvert(client_t *client);
@@ -1042,8 +1042,7 @@ void fitonscreen(client_t *client)
 		client->width = mon.width;
 		client->height = mon.height;
 		willmove = willresize = true;
-//		setborders(client, conf.borderwidth); // XXX this must be included somehow
-		setborders(client, 0);
+		setborders(client->parent, 0);
 		goto endfit;
 
 //		client->maxed = false;
@@ -1391,7 +1390,7 @@ client_t *setup_win(xcb_window_t win)
 	}
 
 	reparent(client);
-	setborders(client, conf.borderwidth);
+	setborders(client->parent, conf.borderwidth);
 
 	if (shapebase != -1) {
 		xcb_shape_select_input(conn, client->id, 1);
@@ -2695,15 +2694,14 @@ void movestep(client_t *client, char direction)
 	}
 }
 
-void setborders(client_t *client, int width)
+void setborders(xcb_drawable_t win, int width)
 {
 	uint32_t values[1];
-	uint32_t mask = 0;
+	uint32_t mask = XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
 	values[0] = width;
 
-	mask |= XCB_CONFIG_WINDOW_BORDER_WIDTH;
-	xcb_configure_window(conn, client->parent, mask, &values[0]);
+	xcb_configure_window(conn, win, mask, &values[0]);
 }
 
 void unmax(client_t *client)
@@ -2726,7 +2724,7 @@ void unmax(client_t *client)
 	resize(client->id, client->width, client->height);
 
 	if (client->maxed) {
-		setborders(client, conf.borderwidth);
+		setborders(client->parent, conf.borderwidth);
 	}
 	/* Warp pointer to window or we might lose it. */
 	xcb_warp_pointer(conn, XCB_NONE, client->id, 0, 0, 0, 0,
@@ -2774,7 +2772,7 @@ void maximize(client_t *client)
 	client->origsize.height = client->height;
 
 	/* Remove borders. */
-	setborders(client, 0);
+	setborders(client->parent, 0);
 
 	/* Move to top left and resize. */
 	client->x = mon.x;
@@ -2902,9 +2900,7 @@ void reparent(client_t *client)
 			mask, values);
 
 	/* set client window borderless */
-	mask = XCB_CONFIG_WINDOW_BORDER_WIDTH;
-	values[0] = 0;
-	xcb_configure_window(conn, client->id, mask, values);
+	setborders(client->id, 0);
 
 	/* mapped window will be unmapped and mapped under new parent 
 	 * unmapping notify after reparenting
@@ -3233,12 +3229,12 @@ void events(void)
 		FD_ZERO(&in); FD_SET(fd, &in);
 
 		if (select(fd + 1, &in, NULL, NULL, NULL) == -1) {
-			// We received a signal. Break out of loop.
+			/* We received a signal. Break out of loop. */
 			if (errno == EINTR)
 				break;
 
 			// Something was seriously wrong with select().
-			fprintf(stderr, "mcwm: select failed.");
+			perror("mcwm select");
 			cleanup(1);
 		}
 
@@ -3474,7 +3470,6 @@ void handle_motion_notify(xcb_generic_event_t *ev) //wunused
 	 * the mouse pointer moved. This means we need to get the
 	 * current pointer position ourselves.
 	 */
-	// XXX this seems to be wrong
 	xcb_query_pointer_reply_t *pointer = xcb_query_pointer_reply(conn,
 			xcb_query_pointer(conn, screen->root), 0);
 
@@ -3487,11 +3482,6 @@ void handle_motion_notify(xcb_generic_event_t *ev) //wunused
 	 * Our pointer is moving and since we even get this event
 	 * we're either resizing or moving a window.
 	 */
-	PDEBUG("motion-notify\n> ex = %d\n> ey = %d\n> rx = %d\n> ry = %d\n",
-		  e->event_x, e->event_y, e->root_x, e->root_y);
-	PDEBUG("motion-notify pointer\n rx = %d\n> ry = %d\n",
-		  pointer->root_x, pointer->root_y);
-
 	if (is_mode(mode_move)) {
 		mousemove(focuswin, pointer->root_x - mode_x, pointer->root_y - mode_y);
 	} else if (is_mode(mode_resize)) {
@@ -3511,8 +3501,6 @@ void handle_button_release(xcb_generic_event_t *ev)
 
 	PDEBUG("Mouse button released! mode = %d\n", get_mode());
 
-	// XXX check if still grabbed?
-	// correct button?
 	if (is_mode(mode_nothing))
 		return;
 
@@ -3554,7 +3542,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	PDEBUG("key_press: Key %d pressed (state: %d).\n", e->detail, e->state);
 
-	// XXX this should be superflous as we only grab wanted keys
+	/* XXX * this should be superflous as we only grab wanted keys */
 	for (key = KEY_MAX, i = KEY_F; i < KEY_MAX; i++) {
 		if (keys[i].keycode && e->detail == keys[i].keycode) {
 			key = i;
@@ -3584,11 +3572,10 @@ void handle_key_press(xcb_generic_event_t *ev)
 		return;
 	}
 
-
-	/* Is it CTRLd? */
 	if (e->state & CONTROLMOD) {
-		/* Is it shifted? */
+		/* META+CTRL */
 		if (e->state & SHIFTMOD) {
+			/* META+CTRL+SHIFT */
 			switch (key) {
 				case KEY_H:		/* h */
 					resizestep(focuswin, 'h');
@@ -3607,10 +3594,13 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				default:
-					/* Ignore other shifted keys. */
+					PDEBUG("got key I didn't register for 0: (%d)\n", key);
+					xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
+							XCB_EVENT_MASK_NO_EVENT, (char *) e);
 					break;
 			}
-		} else { // Shifted
+		} else {
+			/* META+CTRL without SHIFT */
 			switch (key) {
 				case KEY_RET:		/* return */
 					start(conf.terminal);
@@ -3725,32 +3715,26 @@ void handle_key_press(xcb_generic_event_t *ev)
 						hide(focuswin);
 					}
 					break;
-
 				default:
-					// XXX shoult not happen ?!
-					PDEBUG("key_press: nothing to handle 1!\n");
+					PDEBUG("got key I didn't register for 1: (%d)\n", key);
 					xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
 							XCB_EVENT_MASK_NO_EVENT, (char *) e);
-					xcb_flush(conn);
-					return;
+					break;
 			}					/* switch unshifted */
 		}
 	} else {
+		/* only META */
 		if (key == KEY_TAB) {	/* tab */
 			PDEBUG("key_press: MOD+TAB\n");
 			focusnext();
-			return;
+		} else {
+			PDEBUG("got key I didn't register for 2: (%d)\n", key);
+			xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
+					XCB_EVENT_MASK_NO_EVENT, (char *) e);
 		}
-		// XXX shoult not happen ?!
-		PDEBUG("key_press: nothing to handle 2!\n");
-		xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
-				XCB_EVENT_MASK_NO_EVENT, (char *) e);
-		xcb_flush(conn);
-		return;
 	}
-	/* CONTROLMOD */
-}								/* handle_keypress() */
-
+	xcb_flush(conn);
+}
 
 void handle_key_release(xcb_generic_event_t *ev)
 {
@@ -3812,9 +3796,10 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	}
 
 #ifdef DEBUG
+	/* TODO * why is that */
 	if (e->detail == XCB_NOTIFY_DETAIL_NONLINEAR_VIRTUAL) {
 		PDEBUG("> root: 0x%x event: 0x%x child: 0x%x state: %d\n", e->root, e->event, e->child, e->state);
-		//						break;
+		//break;
 	}
 #endif
 	/*
@@ -3851,7 +3836,6 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 			} /* if not tabbing */
 
 			setfocus(client);
-//			xcb_flush(conn);
 		}
 	}
 	xcb_flush(conn);
@@ -3964,7 +3948,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 			if (e->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
 				PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
 				// XXX Determine who is allowed to
-				setborders(client, e->border_width);
+				setborders(client->parent, e->border_width);
 			}
 		}
 
@@ -4184,7 +4168,6 @@ static void handle_client_message(xcb_generic_event_t *ev)
 				}
 				break;
 		} // switch
-//		ewmh_update_state(c); // done by maximize etc
 
 	} // if _net_wm_state
 //	} else if (e->type == ewmh->_NET_CURRENT_DESKTOP) {

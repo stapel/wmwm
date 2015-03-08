@@ -4676,9 +4676,6 @@ int main(int argc, char **argv)
 	/* Subscribe to events. */
 	mask = XCB_CW_EVENT_MASK;
 
-
-	// XXX put this on top to check if another wm is online and not disturb it
-	// XXX HERE XXX
 	values[0] = DEFAULT_ROOT_WINDOW_EVENTS;
 /*		| XCB_EVENT_MASK_STRUCTURE_NOTIFY 
 		| XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY 

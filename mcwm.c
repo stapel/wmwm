@@ -154,9 +154,13 @@ typedef enum {
 // - Substructure notify (unmap notify -> forget)
 // - Substructure redirect (configure request etc)
 //   (needed for e.g. higan)
+//
+#define DEFAULT_WINDOW_EVENTS XCB_EVENT_MASK_PROPERTY_CHANGE
+
 #define DEFAULT_PARENT_EVENTS (XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
 
 #define DEFAULT_ROOT_WINDOW_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
+
 //XCB_EVENT_MASK_PROPERTY_CHANGE
 // - Substructure redirect (map request -> new win)
 
@@ -966,6 +970,12 @@ void withdraw_client(client_t* client)
 	xcb_generic_error_t *error;
 	xcb_void_cookie_t vc;
 
+/*  Remove it as well
+	mask = XCB_CW_EVENT_MASK;
+	values[0] = 0;
+	xcb_change_window_attributes(conn, client->id, mask, values);
+*/
+
 	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
 	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
 	error = xcb_request_check(conn, vc);
@@ -1268,6 +1278,21 @@ void icccm_update_wm_normal_hints(client_t* client)
 		client->base_width = hints.base_width;
 		client->base_height = hints.base_height;
 	}
+
+	/* ICCCM 4.1.2.3
+	 * "If a base size is not provided, the minimum size is to be used in its place and vice versa."
+	 */
+	/* XXX maybe
+	if (client->base_width == 0)
+		client->base_width = client->min_width;
+	else if (client->min_width == 0)
+		client->min_width = client->base_width;
+
+	if (client->base_height == 0)
+		client->base_height = client->min_height;
+	else if (client->min_height == 0)
+		client->min_height = client->base_height;
+	*/
 }
 
 /*
@@ -2612,12 +2637,18 @@ void mousemove(client_t *client, int rel_x, int rel_y)
 
 void mouseresize(client_t *client, int rel_x, int rel_y)
 {
+	const uint16_t width = client->width;
+	const uint16_t height = client->width;
+
 	client->width = abs(rel_x - client->x);
 	client->height = abs(rel_y - client->y);
 
 	client->width -= (client->width - client->base_width) % client->width_inc;
 	client->height -= (client->height - client->base_height)
 		% client->height_inc;
+
+	if (client->width == width && client->height == height)
+		return;
 
 	PDEBUG("Trying to resize to %dx%d (%dx%d)\n", client->width,
 			client->height,
@@ -2878,6 +2909,8 @@ void hide(client_t *client)
 
 /*
  * Reparent window 
+ *
+ * also install listening-events to parent and children
  * this does not check if there is allready a parent
  */
 void reparent(client_t *client)
@@ -2906,6 +2939,12 @@ void reparent(client_t *client)
 	/* Reparent client to my window */
 	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, client->parent);
 	xcb_reparent_window(conn, client->id, client->parent, 0, 0);
+
+	/* Add default events to clients window */
+	mask = XCB_CW_EVENT_MASK;
+	values[0] = DEFAULT_WINDOW_EVENTS;
+	xcb_change_window_attributes(conn, client->id, mask, values);
+
 	xcb_map_window(conn, client->id);
 
 	xcb_flush(conn);
@@ -3315,6 +3354,7 @@ void handle_property_notify(xcb_generic_event_t *ev)
 		PDEBUG("0x%x notfifies changed atom (%d)\n", e->window, e->atom);
 	} else {
 		PDEBUG("0x%x notifies changed atom (%d: %s)\n", e->window, e->atom, name);
+		free(name);
 	}
 #endif
 
@@ -4659,19 +4699,9 @@ int main(int argc, char **argv)
 	mask = XCB_CW_EVENT_MASK;
 
 	values[0] = DEFAULT_ROOT_WINDOW_EVENTS;
-/*		| XCB_EVENT_MASK_STRUCTURE_NOTIFY 
-		| XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY 
-		| XCB_EVENT_MASK_KEY_PRESS  // ADDED THESE
-		| XCB_EVENT_MASK_KEY_RELEASE 
-		| XCB_EVENT_MASK_STRUCTURE_NOTIFY 
-		| XCB_EVENT_MASK_PROPERTY_CHANGE
-		| XCB_EVENT_MASK_KEYMAP_STATE
-		| XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW; */
 
 	cookie = xcb_change_window_attributes_checked(conn, root, mask, values);
 	error = xcb_request_check(conn, cookie);
-
-//	xcb_flush(conn);
 
 	if (error) {
 		fprintf(stderr, "mcwm: Can't get SUBSTRUCTURE REDIRECT. "

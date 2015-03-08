@@ -449,6 +449,7 @@ static bool ewmh_is_fullscreen(client_t*);
 
 static void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws);
 static int32_t ewmh_get_workspace(xcb_drawable_t win);
+static void ewmh_update_client_list();
 
 static void addtoworkspace(client_t *client, uint32_t ws);
 static void delfromworkspace(client_t *client, uint32_t ws);
@@ -715,6 +716,46 @@ void arrangewindows(void)
 		client = item->data;
 		fitonscreen(client);
 	}
+}
+/*
+ * set _NET_CLIENT_LIST
+ *
+ * in order of first mapping
+ * (btw. we don't have stacking information of all windows
+ * so we don't set _NET_CLIENT_LIST_STACKING
+ */
+void ewmh_update_client_list()
+{
+	item_t *item;
+	client_t *client;
+	xcb_window_t *window_list;
+
+	uint32_t windows = 0;
+
+	/* count windows */
+	for (item = winlist; item; item = item->next, windows++);
+
+	/* leave if no windows */
+	if (windows == 0) {
+		xcb_ewmh_set_client_list(ewmh, screen_number, 0, NULL);
+		return;
+	}
+
+	/* create window array */
+	window_list = calloc(windows, sizeof(xcb_window_t));
+	if (is_null(window_list)) {
+		xcb_ewmh_set_client_list(ewmh, screen_number, 0, NULL);
+		return;
+	}
+
+	/* fill window array */
+	int id = windows;
+	for (item = winlist; item; item = item->next) {
+		client = item->data;
+		window_list[--id] = client->id;
+	}
+	xcb_ewmh_set_client_list(ewmh, screen_number, windows, window_list);
+	free(window_list);
 }
 
 /* Set the EWMH hint that window win belongs on workspace ws. */
@@ -1014,6 +1055,7 @@ void remove_client(client_t *client)
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);
+	ewmh_update_client_list();
 }
 
 /*
@@ -1323,7 +1365,11 @@ void icccm_update_wm_protocols(client_t* client)
 	}
 }
 
-/* Set border colour, width and event mask for window. */
+/*
+ * Set border colour, width and event mask for window,
+ * reparent etc.
+ * Executed for each new handled window (unlike newwin)
+ * */
 client_t *setup_win(xcb_window_t win)
 {
 	item_t *item;
@@ -1411,6 +1457,9 @@ client_t *setup_win(xcb_window_t win)
 	icccm_update_wm_protocols(client);
 
 	ewmh_update_state(client);
+
+	// update client list
+	ewmh_update_client_list();
 
 	xcb_ewmh_set_wm_allowed_actions(ewmh, client->id,
 			sizeof(ewmh_allowed_actions)/sizeof(xcb_atom_t),
@@ -1565,6 +1614,7 @@ bool setup_ewmh(void)
 		ewmh->_NET_NUMBER_OF_DESKTOPS,		// root
 		ewmh->_NET_CURRENT_DESKTOP,			// root
 		ewmh->_NET_ACTIVE_WINDOW,			// root
+		ewmh->_NET_CLIENT_LIST,				// root
 
 /*		ewmh->_NET_WORKAREA,				// root
 /		and _NET_WM_STRUT or _NET_WM_STRUT_PARTIAL */
@@ -1600,6 +1650,8 @@ bool setup_ewmh(void)
 	xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, screen->root);
 	xcb_ewmh_set_number_of_desktops(ewmh, screen_number, workspaces);
 	xcb_ewmh_set_active_window(ewmh, screen_number, 0);
+
+	ewmh_update_client_list();
 
 	xcb_flush(conn);
 	return true;

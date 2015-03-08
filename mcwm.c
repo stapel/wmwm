@@ -3930,7 +3930,6 @@ void handle_configure_request(xcb_generic_event_t *ev)
 	if ((client = findclient(e->window))) {
 		
 		bool resizing = false;
-		bool fullscreen = (client->maxed | client->vertmaxed) ? true : false;
 		/* Find monitor position and size. */
 		get_mondim(is_null(client) ? NULL : client->monitor, &mon);
 
@@ -3962,7 +3961,8 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		}
 #endif
 
-		if (! fullscreen) {
+		/* XXX * allow maxed client to unmax that way ? */
+		if (! client->maxed) {
 			if (e->value_mask & XCB_CONFIG_WINDOW_WIDTH) {
 				/* Don't resize if maximized. */
 				client->width = e->width;
@@ -3979,11 +3979,11 @@ void handle_configure_request(xcb_generic_event_t *ev)
 				PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
 				if (e->border_width != 0 && ! client->maxed) {
 					setborders(client->frame, conf.borderwidth);
+					set_frame_extents(client->id, conf.borderwidth);
 				} else {
 					setborders(client->frame, 0);
+					set_frame_extents(client->id, 0);
 				}
-				else 
-				set_frame_extents(client->id, e->border_width);
 			}
 		}
 

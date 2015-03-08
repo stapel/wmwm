@@ -3970,159 +3970,13 @@ void handle_configure_notify(xcb_generic_event_t *ev)
 
 void handle_configure_request(xcb_generic_event_t *ev)
 {
-	client_t *client;
 	winconf_t wc;
-	xcb_rectangle_t mon;
+	client_t *client;
 
 	xcb_configure_request_event_t* e = (xcb_configure_request_event_t*) ev;
 
-	PDEBUG("configure_request: mask = %d\n", e->value_mask);
-
-
 	/* Find the client. */
-	if ((client = findclient(e->window))) {
-		
-		bool resizing = false;
-		/* Find monitor position and size. */
-		get_mondim(is_null(client) ? NULL : client->monitor, &mon);
-
-#if 0
-		/*
-		 * We ignore moves the user haven't initiated, that is do
-		 * nothing on XCB_CONFIG_WINDOW_X and XCB_CONFIG_WINDOW_Y
-		 * ConfigureRequests.
-		 *
-		 * Code here if we ever change our minds or if you, dear user,
-		 * wants this functionality.
-		 */
-
-		if (e->value_mask & XCB_CONFIG_WINDOW_X) {
-			/* Don't move window if maximized. Don't move off the screen. */
-			if (!client->maxed && e->x > 0) {
-				client->x = e->x;
-			}
-		}
-
-		if (e->value_mask & XCB_CONFIG_WINDOW_Y) {
-			/*
-			 * Don't move window if maximized. Don't move off the
-			 * screen.
-			 */
-			if (!client->maxed && !client->vertmaxed && e->y > 0) {
-				client->y = e->y;
-			}
-		}
-#endif
-
-		/* XXX * allow maxed client to unmax that way ? */
-		if (! client->maxed) {
-			if (e->value_mask & XCB_CONFIG_WINDOW_WIDTH) {
-				/* Don't resize if maximized. */
-				client->width = e->width;
-				resizing = true;
-			}
-
-			if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT) {
-				/* Don't resize if maximized. */
-				client->height = e->height;
-				resizing = true;
-			}
-
-			if (e->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
-				PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
-				if (e->border_width != 0 && ! client->maxed) {
-					setborders(client->frame, conf.borderwidth);
-					set_frame_extents(client->id, conf.borderwidth);
-				} else {
-					setborders(client->frame, 0);
-					set_frame_extents(client->id, 0);
-				}
-			}
-		}
-
-
-		/*
-		 * XXX Do we really need to pass on sibling and stack mode
-		 * configuration? Do we want to?
-		 */
-		if (e->value_mask & XCB_CONFIG_WINDOW_SIBLING) {
-			uint32_t values[1];
-			client_t *sibling = findclient(e->sibling);
-			PDEBUG("configure request : sibling 0x%x\n", e->sibling);
-
-			if (sibling) {
-				values[0] = sibling->frame;
-			} else {
-				values[0] = e->sibling;
-			}
-			xcb_configure_window(conn, client->frame,
-					XCB_CONFIG_WINDOW_SIBLING, values);
-
-		}
-
-		if (e->value_mask & XCB_CONFIG_WINDOW_STACK_MODE) {
-			uint32_t values[1];
-
-			PDEBUG("configure request : stack mode\n");
-			values[0] = e->stack_mode;
-			xcb_configure_window(conn, client->frame,
-					XCB_CONFIG_WINDOW_STACK_MODE, values);
-		}
-
-		/* Check if window fits on screen after resizing. */
-		
-		if (! resizing) {
-			xcb_flush(conn);
-			return;
-		}
-
-		if (client->x + client->width + 2 * conf.borderwidth
-				> mon.x + mon.width) {
-			/*
-			 * See if it fits if we move away the window from the
-			 * right edge of the screen.
-			 */
-			client->x = mon.x + mon.width
-				- (client->width + 2 * conf.borderwidth);
-
-			/*
-			 * If we moved over the left screen edge, move back and
-			 * fit exactly on screen.
-			 */
-			if (client->x < mon.x) {
-				client->x = mon.x;
-				client->width = mon.width - 2 * conf.borderwidth;
-			}
-		}
-
-		if (client->y + client->height + 2 * conf.borderwidth
-				> mon.y + mon.height) {
-			/*
-			 * See if it fits if we move away the window from the
-			 * bottom edge.
-			 */
-			client->y = mon.y + mon.height
-				- (client->height + 2 * conf.borderwidth);
-
-			/*
-			 * If we moved over the top screen edge, move back and fit
-			 * on screen.
-			 */
-			if (client->y < mon.y) {
-				PDEBUG("over the edge: y < %d\n", mon.y);
-				PDEBUG(" mon.x = %d, mon.y = %d, mon.height = %d, mon.width = %d, conf.borderwidth = %d\n",
-						mon.x, mon.y, mon.height, mon.width, conf.borderwidth);
-
-				client->y = mon.y;
-				client->height = mon.height - 2 * conf.borderwidth;
-			}
-		}
-
-		moveresize(client->frame, client->x, client->y, client->width, client->height);
-		if (resizing) {
-			resize(client->id, client->width, client->height);
-		}
-	} else {
+	if (! (client = findclient(e->window))) {
 		PDEBUG("We don't know about this window yet.\n");
 
 		/*
@@ -4139,6 +3993,151 @@ void handle_configure_request(xcb_generic_event_t *ev)
 
 		configwin(e->window,
 				e->value_mask & ~XCB_CONFIG_WINDOW_BORDER_WIDTH, wc);
+		xcb_flush(conn);
+		return;
+	}
+
+	bool resizing = false;
+	xcb_rectangle_t mon;
+
+	/* Find monitor position and size. */
+	get_mondim(is_null(client) ? NULL : client->monitor, &mon);
+
+#if 0
+	/*
+	 * We ignore moves the user haven't initiated, that is do
+	 * nothing on XCB_CONFIG_WINDOW_X and XCB_CONFIG_WINDOW_Y
+	 * ConfigureRequests.
+	 *
+	 * Code here if we ever change our minds or if you, dear user,
+	 * wants this functionality.
+	 */
+
+	if (e->value_mask & XCB_CONFIG_WINDOW_X) {
+		/* Don't move window if maximized. Don't move off the screen. */
+		if (!client->maxed && e->x > 0) {
+			client->x = e->x;
+		}
+	}
+
+	if (e->value_mask & XCB_CONFIG_WINDOW_Y) {
+		/*
+		 * Don't move window if maximized. Don't move off the
+		 * screen.
+		 */
+		if (!client->maxed && !client->vertmaxed && e->y > 0) {
+			client->y = e->y;
+		}
+	}
+#endif
+
+	/* XXX * allow maxed client to unmax that way ? */
+	if (! client->maxed) {
+		if (e->value_mask & XCB_CONFIG_WINDOW_WIDTH) {
+			/* Don't resize if maximized. */
+			client->width = e->width;
+			resizing = true;
+		}
+
+		if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT) {
+			/* Don't resize if maximized. */
+			client->height = e->height;
+			resizing = true;
+		}
+
+		if (e->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
+			PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
+			if (e->border_width != 0 && ! client->maxed) {
+				setborders(client->frame, conf.borderwidth);
+				set_frame_extents(client->id, conf.borderwidth);
+			} else {
+				setborders(client->frame, 0);
+				set_frame_extents(client->id, 0);
+			}
+		}
+	}
+
+
+	/*
+	 * XXX Do we really need to pass on sibling and stack mode
+	 * configuration? Do we want to?
+	 */
+	if (e->value_mask & XCB_CONFIG_WINDOW_SIBLING) {
+		uint32_t values[1];
+		client_t *sibling = findclient(e->sibling);
+		PDEBUG("configure request : sibling 0x%x\n", e->sibling);
+
+		if (sibling) {
+			values[0] = sibling->frame;
+		} else {
+			values[0] = e->sibling;
+		}
+		xcb_configure_window(conn, client->frame,
+				XCB_CONFIG_WINDOW_SIBLING, values);
+
+	}
+
+	if (e->value_mask & XCB_CONFIG_WINDOW_STACK_MODE) {
+		uint32_t values[1];
+
+		PDEBUG("configure request : stack mode\n");
+		values[0] = e->stack_mode;
+		xcb_configure_window(conn, client->frame,
+				XCB_CONFIG_WINDOW_STACK_MODE, values);
+	}
+
+	/* Check if window fits on screen after resizing. */
+
+	if (! resizing) {
+		xcb_flush(conn);
+		return;
+	}
+
+	if (client->x + client->width + 2 * conf.borderwidth
+			> mon.x + mon.width) {
+		/*
+		 * See if it fits if we move away the window from the
+		 * right edge of the screen.
+		 */
+		client->x = mon.x + mon.width
+			- (client->width + 2 * conf.borderwidth);
+
+		/*
+		 * If we moved over the left screen edge, move back and
+		 * fit exactly on screen.
+		 */
+		if (client->x < mon.x) {
+			client->x = mon.x;
+			client->width = mon.width - 2 * conf.borderwidth;
+		}
+	}
+
+	if (client->y + client->height + 2 * conf.borderwidth
+			> mon.y + mon.height) {
+		/*
+		 * See if it fits if we move away the window from the
+		 * bottom edge.
+		 */
+		client->y = mon.y + mon.height
+			- (client->height + 2 * conf.borderwidth);
+
+		/*
+		 * If we moved over the top screen edge, move back and fit
+		 * on screen.
+		 */
+		if (client->y < mon.y) {
+			PDEBUG("over the edge: y < %d\n", mon.y);
+			PDEBUG(" mon.x = %d, mon.y = %d, mon.height = %d, mon.width = %d, conf.borderwidth = %d\n",
+					mon.x, mon.y, mon.height, mon.width, conf.borderwidth);
+
+			client->y = mon.y;
+			client->height = mon.height - 2 * conf.borderwidth;
+		}
+	}
+
+	moveresize(client->frame, client->x, client->y, client->width, client->height);
+	if (resizing) {
+		resize(client->id, client->width, client->height);
 	}
 	xcb_flush(conn);
 }

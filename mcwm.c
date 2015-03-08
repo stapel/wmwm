@@ -461,6 +461,7 @@ static void fitonscreen(client_t *client);
 static void new_win(xcb_window_t win);
 static client_t *setup_win(xcb_window_t win);
 static void set_shape(client_t* client);
+static void set_frame_extents(xcb_window_t win, int width);
 
 
 static xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym,
@@ -1053,6 +1054,7 @@ void fitonscreen(client_t *client)
 		client->height = mon.height;
 		willmove = willresize = true;
 		setborders(client->parent, 0);
+		set_frame_extents(client->id, 0);
 		goto endfit;
 
 //		client->maxed = false;
@@ -1416,6 +1418,7 @@ client_t *setup_win(xcb_window_t win)
 
 	reparent(client);
 	setborders(client->parent, conf.borderwidth);
+	set_frame_extents(client->id, conf.borderwidth);
 
 	if (shapebase != -1) {
 		xcb_shape_select_input(conn, client->id, 1);
@@ -1750,6 +1753,13 @@ bool setup_screen(void)
 
 	return true;
 }
+void set_frame_extents(xcb_window_t win, int width)
+{
+	long data[] = { width, width, width, width };
+	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, win, ewmh->_NET_FRAME_EXTENTS,
+			XCB_ATOM_CARDINAL, 32, 4, &data);
+}
+
 
 void set_shape(client_t* client)
 {
@@ -2753,6 +2763,7 @@ void unmax(client_t *client)
 
 	if (client->maxed) {
 		setborders(client->parent, conf.borderwidth);
+		set_frame_extents(client->id, conf.borderwidth);
 	}
 	/* Warp pointer to window or we might lose it. */
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->id, 0, 0, 0, 0,
@@ -2801,6 +2812,7 @@ void maximize(client_t *client)
 
 	/* Remove borders. */
 	setborders(client->parent, 0);
+	set_frame_extents(client->id, 0);
 
 	/* Move to top left and resize. */
 	client->x = mon.x;
@@ -3984,6 +3996,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 				PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
 				// XXX Determine who is allowed to
 				setborders(client->parent, e->border_width);
+				set_frame_extents(client->id, e->border_width);
 			}
 		}
 
@@ -4101,11 +4114,9 @@ static void handle_client_message(xcb_generic_event_t *ev)
 #endif
 
 
-	// XXX set this for all and availables
+	/* Some window want's to know how our frame extends, anyone welcome */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
-		long r[] = { conf.borderwidth, conf.borderwidth, conf.borderwidth, conf.borderwidth };
-		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, e->window, ewmh->_NET_FRAME_EXTENTS,
-				XCB_ATOM_CARDINAL, 32, 4, &r);
+		set_frame_extents(e->window, client && client->maxed ? 0 : conf.borderwidth);
 		xcb_flush(conn);
 		return;
 	}

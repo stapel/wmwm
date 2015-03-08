@@ -1557,7 +1557,6 @@ bool setup_ewmh(void)
 	//	ewmh_1_4_NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
 
 
-	// XXX
 	ewmh_allowed_actions[0] = ewmh->_NET_WM_ACTION_MAXIMIZE_VERT;
 	ewmh_allowed_actions[1] = ewmh->_NET_WM_ACTION_FULLSCREEN;
 
@@ -1567,6 +1566,8 @@ bool setup_ewmh(void)
 		ewmh->_NET_CURRENT_DESKTOP,			// root
 		ewmh->_NET_ACTIVE_WINDOW,			// root
 
+/*		ewmh->_NET_WORKAREA,				// root
+/		and _NET_WM_STRUT or _NET_WM_STRUT_PARTIAL */
 		ewmh->_NET_WM_NAME,					// window
 		ewmh->_NET_WM_DESKTOP, 				// window
 

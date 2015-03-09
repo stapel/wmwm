@@ -18,7 +18,7 @@ CFLAGS += $(ETCFLAGS) -std=c99 -I/usr/local/include -Wall -Wextra -fstack-protec
 ifeq ($(CC),gcc)
 	CFLAGS += -Wall -Wextra -Wno-variadic-macros -pedantic -ggdb -Os
 else
-	CFLAGS += -O3
+	CFLAGS += -O2 -Wall -Wextra -Wno-variadic-macros -pedantic
 endif
 
 ifeq ($(debug),1)

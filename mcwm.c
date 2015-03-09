@@ -1674,7 +1674,6 @@ bool setup_ewmh(void)
 bool setup_screen(void)
 {
 	xcb_query_tree_reply_t *reply;
-	xcb_query_pointer_reply_t *pointer;
 	int i;
 	int len;
 	xcb_window_t *children;

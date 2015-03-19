@@ -84,11 +84,6 @@
 #include <xcb/xcb_icccm.h>
 #include <xcb/xcb_ewmh.h>
 
-/* as in X11 PointerRoot */
-#ifndef XCB_POINTER_ROOT
-#define XCB_POINTER_ROOT 1L
-#endif
-
 #include <X11/keysym.h>
 
 #include "list.h"
@@ -694,7 +689,7 @@ struct modkeycodes getmodkeys(xcb_mod_mask_t modmask)
 void cleanup(int code)
 {
 	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
-			XCB_POINTER_ROOT, get_timestamp());
+			XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
 	if (ewmh) {
 		/* TODO * delete atoms */
 		xcb_ewmh_connection_wipe(ewmh);
@@ -1694,8 +1689,7 @@ bool setup_screen(void)
 	for (i = 0; i < len; i++) {
 		attr = xcb_get_window_attributes_reply(conn,
 				xcb_get_window_attributes_unchecked(conn,
-					children
-					[i]),
+					children[i]),
 				NULL);
 
 		if (!attr) {
@@ -2436,7 +2430,7 @@ void setfocus(client_t *client)
 
 		focuswin = NULL;
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
-				XCB_POINTER_ROOT, XCB_CURRENT_TIME);
+				XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
 
 		return;

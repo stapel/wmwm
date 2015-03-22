@@ -4131,7 +4131,6 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
 		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n", e->window);
 		set_frame_extents(e->window, client && client->maxed ? 0 : conf.borderwidth);
-		xcb_flush(conn);
 		return;
 	}
 

@@ -734,7 +734,7 @@ void ewmh_update_client_list()
 	uint32_t windows = 0;
 
 	/* count windows */
-	for (item = winlist; item; item = item->next, windows++);
+	for (item = winlist; item; item = item->next, ++windows);
 
 	/* leave if no windows */
 	if (windows == 0) {
@@ -1068,6 +1068,7 @@ void remove_client(client_t *client)
 			delfromworkspace(client, ws);
 		}
 	}
+	xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);
@@ -1725,7 +1726,7 @@ bool setup_screen(void)
 				 * Find the physical output this window will be on if
 				 * RANDR is active.
 				 */
-				if (-1 != randrbase) {
+				if (randrbase != -1) {
 					PDEBUG("Looking for monitor on %d x %d.\n", client->x,
 							client->y);
 					client->monitor = findmonbycoord(client->x, client->y);
@@ -1759,9 +1760,9 @@ bool setup_screen(void)
 					addtoworkspace(client, ws);
 					/* If it's on our current workspace, show it, else hide it. */
 					if (ws == curws) {
-						hide(client);
-					} else {
 						show(client);
+					} else {
+						hide(client);
 					}
 				} else {
 					/*
@@ -2560,7 +2561,7 @@ void moveresize(xcb_drawable_t win, uint16_t x, uint16_t y,
 		return;
 	}
 
-	PDEBUG("Moving to %d, %d, resizing to %d x %d.\n", x, y, width, height);
+//	PDEBUG("Moving to %d, %d, resizing to %d x %d.\n", x, y, width, height);
 
 	const uint32_t values[4] = { x, y, width, height };
 	xcb_configure_window(conn, win,
@@ -2580,7 +2581,7 @@ void resize(xcb_drawable_t win, uint16_t width, uint16_t height)
 		return;
 	}
 
-	PDEBUG("Resizing to %d x %d.\n", width, height);
+//	PDEBUG("Resizing to %d x %d.\n", width, height);
 
 	values[0] = width;
 	values[1] = height;
@@ -2690,10 +2691,10 @@ void mouseresize(client_t *client, int rel_x, int rel_y)
 	if (client->width == width && client->height == height)
 		return;
 
-	PDEBUG("Trying to resize to %dx%d (%dx%d)\n", client->width,
-			client->height,
-			(client->width - client->base_width) / client->width_inc,
-			(client->height - client->base_height) / client->height_inc);
+//	PDEBUG("Trying to resize to %dx%d (%dx%d)\n", client->width,
+//			client->height,
+//			(client->width - client->base_width) / client->width_inc,
+//			(client->height - client->base_height) / client->height_inc);
 
 	resizelim(client);
 
@@ -3315,10 +3316,10 @@ void events(void)
 
 		while ((ev = xcb_poll_for_event(conn))) {
 			const uint8_t response_type = XCB_EVENT_RESPONSE_TYPE(ev);
-			PDEBUG("Event: %s (%d, handler: %d)\n",
-					xcb_event_get_label(response_type),
-					response_type,
-					handler[response_type] ? 1 : 0);
+//			PDEBUG("Event: %s (%d, handler: %d)\n",
+//					xcb_event_get_label(response_type),
+//					response_type,
+//					handler[response_type] ? 1 : 0);
 
 			if (randrbase != -1 && response_type == (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
 				PDEBUG("RANDR screen change notify. Checking outputs.\n");
@@ -3400,7 +3401,7 @@ void handle_property_notify(xcb_generic_event_t *ev)
 		PDEBUG("0x%x notfifies changed atom (%d)\n", e->window, e->atom);
 	} else {
 		PDEBUG("0x%x notifies changed atom (%d: %s)\n", e->window, e->atom, name);
-		free(name);
+		destroy(name);
 	}
 #endif
 
@@ -3428,10 +3429,10 @@ void handle_button_press(xcb_generic_event_t* ev)
 
 	update_timestamp(e->time);
 
-	PDEBUG("Button %d pressed in window 0x%x, subwindow 0x%x "
-			"coordinates (%d,%d)\n",
-			e->detail, e->event, e->child, e->event_x,
-			e->event_y);
+//	PDEBUG("Button %d pressed in window 0x%x, subwindow 0x%x "
+//			"coordinates (%d,%d)\n",
+//			e->detail, e->event, e->child, e->event_x,
+//			e->event_y);
 
 	if (0 == e->child) {
 		/* Mouse click on root window. Start programs? */
@@ -4328,7 +4329,6 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 	// XXX differentate between notifies between parent and id XXX
 	// CURRENT
 	//
-//		xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
 
 	PDEBUG("unmap_notify: sent=%d event=0x%x, window=0x%x, seq=%d\n",
 			XCB_EVENT_SENT(ev),
@@ -4485,81 +4485,6 @@ void get_mondim(monitor_t* monitor, xcb_rectangle_t* sp)
 		sp->height = monitor->height;
 	}
 }
-#if 0
-int get_wm_name(xcb_window_t win, char** string, int* len)
-{
-	if (! get_wm_name_ewmh(win, string, len)) {
-		if (! get_wm_name_icccm(win, string, len)) {
-			*string = NULL;
-			*len = 0;
-			return 0;
-		}
-	}
-	return 1;
-}
-
-
-// this is all horrible
-// what about the encoding
-int get_wm_name_icccm(xcb_window_t win, char **string, int* len)
-{
-	if (string == NULL)
-		return 0;
-
-	*string = NULL;
-	*len = 0;
-
-	xcb_get_property_cookie_t			cookie;
-	xcb_icccm_get_text_property_reply_t	data;
-
-	cookie = xcb_icccm_get_wm_name(conn, win);
-	if (! xcb_icccm_get_wm_name_reply(conn, cookie, &data, NULL))
-		return 0;
-
-	if (data.name_len) {
-		*string = calloc(data.name_len + 1, sizeof(char));
-		*len = data.name_len;
-		if (is_null(*string)) {
-			perror("get_wm_name icccm");
-			cleanup(1);
-		}
-		memcpy(*string, data.name, data.name_len * sizeof(char));
-	}
-	xcb_icccm_get_text_property_reply_wipe(&data);
-	return 1;
-}
-// get NET_WM_NAME or if unsuccessful
-//
-int get_wm_name_ewmh(xcb_window_t win, char **string, int* len)
-{
-	if (string == NULL)
-		return 0;
-
-	*string = NULL;
-	*len = 0;
-
-	xcb_get_property_cookie_t			cookie;
-	xcb_ewmh_get_utf8_strings_reply_t	data;
-
-	cookie = xcb_ewmh_get_wm_name(ewmh, win);
-	if (! xcb_ewmh_get_wm_name_reply(ewmh, cookie, &data, NULL)) {
-		return 0;
-	}
-
-	if (data.strings_len) {
-		*string = calloc(data.strings_len + 1, sizeof(char));
-		*len = data.strings_len;
-
-		if (is_null(*string)) {
-			perror("get_wm_name_ewmh");
-			cleanup(1);
-		}
-		memcpy(*string, data.strings, data.strings_len * sizeof(char));
-	}
-	xcb_ewmh_get_utf8_strings_reply_wipe(&data);
-	return 1;
-}
-#endif
 
 int main(int argc, char **argv)
 {
@@ -4575,11 +4500,10 @@ int main(int argc, char **argv)
 	char *fixedcol;
 	xcb_screen_iterator_t iter;
 
-	/* Install signal handlers. */
-
 	set_timestamp(XCB_CURRENT_TIME);
-
 	ewmh = NULL; // XXX i dont like that
+
+	/* Install signal handlers. */
 
 	/* We ignore child exists. Don't create zombies. */
 	if (SIG_ERR == signal(SIGCHLD, SIG_IGN)) {
@@ -4713,7 +4637,6 @@ int main(int argc, char **argv)
 	}
 
 	/* Grab mouse buttons. */
-
 	xcb_grab_button(conn, 0, root, XCB_EVENT_MASK_BUTTON_PRESS
 			| XCB_EVENT_MASK_BUTTON_RELEASE,
 			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, root,
@@ -4760,14 +4683,17 @@ int main(int argc, char **argv)
 void set_input_focus(xcb_window_t win)
 {
 	xcb_query_pointer_reply_t *pointer;
+	client_t *client;
 
 	if (win == XCB_WINDOW_NONE) {
-		pointer = xcb_query_pointer_reply(conn, xcb_query_pointer(conn, screen->root), 0);
-
+		pointer = xcb_query_pointer_reply(conn,
+				xcb_query_pointer(conn, screen->root), 0);
 		if (! is_null(pointer)) {
 			win = pointer->child;
 			destroy(pointer);
 		}
 	}
-	setfocus(findclientp(win));
+	if (!is_null(client = findclientp(win))) {
+		setfocus(client);
+	}
 }

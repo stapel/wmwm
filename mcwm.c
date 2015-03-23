@@ -386,6 +386,9 @@ static xcb_atom_t ewmh_allowed_actions[2] = { XCB_ATOM_NONE, XCB_ATOM_NONE };
 
 /* Functions declerations. */
 
+/* print out X error to stderr */
+static void print_x_error(xcb_generic_error_t *e);
+
 /* Handlers */
 static void handle_error_event(xcb_generic_event_t*);
 static void handle_map_request(xcb_generic_event_t*);
@@ -1001,9 +1004,10 @@ uint32_t getcolor(const char *colstr)
 	col_reply = xcb_alloc_named_color_reply(conn, colcookie, &error);
 
 	if (error || col_reply == NULL) {
-		// XXX do errors have to be freed?
-		fprintf(stderr, "mcwm: Couldn't get pixel value for colour %s. "
-				"Exiting.\n", colstr);
+		fprintf(stderr, "mcwm: Couldn't get pixel value for colour %s. Exiting.\n",
+				colstr);
+		print_x_error(error);
+		destroy(error);
 		cleanup(1);
 	}
 	color = col_reply->pixel;
@@ -1032,7 +1036,12 @@ void withdraw_client(client_t* client)
 		PDEBUG(" and set window to withdrawn state");
 		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
+	} else {
+		PDEBUG("Could not reparent 0x%x back to root\n", client->id);
+		print_x_error(error);
+		destroy(error);
 	}
+	/* XXX check out the error-code */
 	xcb_destroy_window(conn, client->frame);
 }
 
@@ -1490,7 +1499,6 @@ xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym, xcb_key_symbols_t * keysyms)
 	if (is_null(keyp)) {
 		fprintf(stderr, "mcwm: Couldn't look up key. Exiting.\n");
 		exit(1);
-		return 0;
 	}
 
 	key = *keyp;
@@ -1692,7 +1700,7 @@ bool setup_screen(void)
 					children[i]),
 				NULL);
 
-		if (!attr) {
+		if (is_null(attr)) {
 			fprintf(stderr, "Couldn't get attributes for window %d.",
 					children[i]);
 			continue;
@@ -1765,7 +1773,6 @@ bool setup_screen(void)
 				}
 			}
 		}
-
 		destroy(attr);
 	}							/* for */
 
@@ -1794,15 +1801,21 @@ void set_shape(client_t* client)
 	 * disable borders, they might appear
 	 */
 	xcb_shape_query_extents_reply_t *extents;
-	xcb_generic_error_t* e;
+	xcb_generic_error_t* error;
 
-	extents = xcb_shape_query_extents_reply(conn, xcb_shape_query_extents(conn, client->id), &e);
-	if (! e && extents->bounding_shaped) {
+	extents = xcb_shape_query_extents_reply(conn, xcb_shape_query_extents(conn, client->id), &error);
+	if (error) {
+		PDEBUG("error querying shape extents for 0x%x\n", client->id);
+		print_x_error(error);
+		destroy(error);
+		return;
+	}
+	if (extents->bounding_shaped) {
 		PDEBUG("0x%x is shaped, shaping frame\n", client->id);
 		xcb_shape_combine(conn, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_BOUNDING, XCB_SHAPE_SK_BOUNDING,
 				client->frame, 0, 0, client->id);
 	}
-	free(extents);
+	destroy(extents);
 }
 
 /*
@@ -2157,7 +2170,7 @@ monitor_t *addmonitor(xcb_randr_output_t id, char *name,
 		mon->name = NULL;
 	} else {
 		mon->name = calloc(strlen(name) + 1, sizeof(char));
-		strcpy(mon->name, name); // jaja
+		strcpy(mon->name, name);
 	}
 
 	mon->id = id;
@@ -2192,6 +2205,7 @@ void raiseorlower(client_t *client)
 	xcb_drawable_t win;
 
 	if (is_null(client)) {
+		PDEBUG("Raising NULL client\n");
 		return;
 	}
 
@@ -3300,16 +3314,16 @@ void events(void)
 		}
 
 		while ((ev = xcb_poll_for_event(conn))) {
+			const uint8_t response_type = XCB_EVENT_RESPONSE_TYPE(ev);
 			PDEBUG("Event: %s (%d, handler: %d)\n",
-					xcb_event_get_label(XCB_EVENT_RESPONSE_TYPE(ev)),
-					XCB_EVENT_RESPONSE_TYPE(ev),
-					handler[XCB_EVENT_RESPONSE_TYPE(ev)] ? 1 : 0);
+					xcb_event_get_label(response_type),
+					response_type,
+					handler[response_type] ? 1 : 0);
 
-			if (XCB_EVENT_RESPONSE_TYPE(ev)
-					== (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
+			if (randrbase != -1 && response_type == (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
 				PDEBUG("RANDR screen change notify. Checking outputs.\n");
 				getrandr();
-			} else if (XCB_EVENT_RESPONSE_TYPE(ev) == shapebase + XCB_SHAPE_NOTIFY) {
+			} else if (shapebase != -1 && response_type == shapebase + XCB_SHAPE_NOTIFY) {
 				xcb_shape_notify_event_t *sev = (xcb_shape_notify_event_t*) ev;
 				set_timestamp(sev->server_time);
 
@@ -3320,11 +3334,8 @@ void events(void)
 						set_shape(client);
 					}
 				}
-			} else if (handler[XCB_EVENT_RESPONSE_TYPE(ev)]) {
-				handler[XCB_EVENT_RESPONSE_TYPE(ev)](ev);
-			} else {
-				destroy(ev);
-				continue;
+			} else if (handler[response_type]) {
+				handler[response_type](ev);
 			}
 			destroy(ev);
 		}
@@ -3345,19 +3356,23 @@ void events(void)
  * Event handlers
  */
 
+void print_x_error(xcb_generic_error_t *e)
+{
+	fprintf(stderr, "mcwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
+		xcb_event_get_error_label(e->error_code),
+		xcb_event_get_request_label(e->major_code),
+		e->error_code,
+		e->major_code,
+		e->minor_code,
+		e->resource_id,
+		e->sequence,
+		e->full_sequence);
+}
+
 void handle_error_event(xcb_generic_event_t *ev)
 {
 	xcb_generic_error_t *e = (xcb_generic_error_t*) ev;
-
-	fprintf(stderr, "X error: %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
-			xcb_event_get_error_label(e->error_code),
-			xcb_event_get_request_label(e->major_code),
-			e->error_code,
-			e->major_code,
-			e->minor_code,
-			e->resource_id,
-			e->sequence,
-			e->full_sequence);
+	print_x_error(e);
 }
 
 void handle_map_request(xcb_generic_event_t* ev)
@@ -4727,12 +4742,10 @@ int main(int argc, char **argv)
 
 	if (error) {
 		fprintf(stderr, "mcwm: Can't get SUBSTRUCTURE REDIRECT. "
-				"Error code: %d\n"
-				"Another window manager running? Exiting.\n",
-				error->error_code);
-
+				"Another window manager running? Exiting.\n");
+		print_x_error(error);
+		destroy(error);
 		xcb_disconnect(conn);
-
 		exit(1);
 	}
 

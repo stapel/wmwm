@@ -181,7 +181,6 @@ int get_wm_name_ewmh(xcb_window_t win, char **string, int* len)
 int findhidden(void)
 {
 	uint32_t i;
-	uint32_t len;
 
 	char* name;
 	int name_len;
@@ -189,9 +188,7 @@ int findhidden(void)
 	xcb_window_t id;
 
 	xcb_get_property_cookie_t  p;
-	xcb_get_window_attributes_reply_t *attr;
 	uint32_t state;
-	xcb_generic_error_t* error;
 
 	xcb_ewmh_get_windows_reply_t clients;
 

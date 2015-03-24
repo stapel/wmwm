@@ -135,10 +135,7 @@ typedef enum {
 /* What we listen to on the root window */
 #define DEFAULT_ROOT_WINDOW_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
 
-//XCB_EVENT_MASK_PROPERTY_CHANGE
-// - Substructure redirect (map request -> new win)
 
-
 
 static inline bool is_null(void *ptr)
 {
@@ -259,20 +256,15 @@ int screen_number;
 xcb_timestamp_t	current_time;	/* latest timestamp XXX */
 
 xcb_ewmh_connection_t *ewmh;		/* EWMH Connection */
-
 //xcb_atom_t ewmh_1_4_NET_WM_STATE_FOCUSED;
 
 int randrbase;					/* Beginning of RANDR extension events. */
 int shapebase;					/* Beginning of SHAPE extension events. */
-const unsigned workspaces = WORKSPACES;
 
 uint32_t curws = 0;				/* Current workspace. */
 
-
-
 uint16_t mode_x = 0;
 uint16_t mode_y = 0;
-
 
 client_t *focuswin = NULL;		/* Current focus window. */
 client_t *lastfocuswin = NULL;	/* Last focused window. NOTE! Only
@@ -417,31 +409,38 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 	[XCB_PROPERTY_NOTIFY]	= handle_property_notify
 };
 static void finishtabbing(void);
-static struct modkeycodes getmodkeys(xcb_mod_mask_t modmask);
-static void cleanup(int code);
-static void arrangewindows(void);
 
 
 static bool ewmh_is_fullscreen(client_t*);
-
-static void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws);
 static int32_t ewmh_get_workspace(xcb_drawable_t win);
+static void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws);
 static void ewmh_update_client_list();
+
+static void set_shape(client_t* client);
+static void set_frame_extents(xcb_window_t win, int width);
+
+static xcb_atom_t get_atom(char *atom_name);
+#if DEBUG
+static char* get_atomname(xcb_atom_t atom);
+#endif
 
 static void addtoworkspace(client_t *client, uint32_t ws);
 static void delfromworkspace(client_t *client, uint32_t ws);
 static void changeworkspace(uint32_t ws);
+
 static void fixwindow(client_t *client, bool setcolour);
+
 static uint32_t getcolor(const char *colstr);
+
 static void remove_client(client_t *client);
-//static void forgetwin(xcb_window_t win);
 static void fitonscreen(client_t *client);
+static void arrangewindows(void);
+
+static int start(char *program);
 static void new_win(xcb_window_t win);
 static client_t *setup_win(xcb_window_t win);
-static void set_shape(client_t* client);
-static void set_frame_extents(xcb_window_t win, int width);
 
-
+static struct modkeycodes getmodkeys(xcb_mod_mask_t modmask);
 static xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym,
 									 xcb_key_symbols_t * keysyms);
 
@@ -450,6 +449,7 @@ static bool setup_screen(void);
 static bool setup_icccm(void);
 static bool setup_ewmh(void);
 static int setup_randr(void);
+
 static void getrandr(void);
 static void getoutputs(xcb_randr_output_t * outputs, int len,
 					   xcb_timestamp_t timestamp);
@@ -465,18 +465,12 @@ static monitor_t *addmonitor(xcb_randr_output_t id, char *name,
 static void raisewindow(xcb_drawable_t win);
 static void raiseorlower(client_t *client);
 static void movelim(client_t *client);
-static void movewindow(xcb_drawable_t win, uint16_t x, uint16_t y);
-static client_t *findclient(xcb_drawable_t win);
-static client_t *findclientp(xcb_drawable_t win);
 static void focusnext(void);
 static void setunfocus();
 static void setfocus(client_t *client);
 /* XXX */
 static void set_input_focus(xcb_window_t win);
-static int start(char *program);
 static void resizelim(client_t *client);
-static void moveresize(xcb_drawable_t win, uint16_t x, uint16_t y,
-					   uint16_t width, uint16_t height);
 static void resize(xcb_drawable_t win, uint16_t width, uint16_t height);
 static void resizestep(client_t *client, char direction);
 static void mousemove(client_t *client, int rel_x, int rel_y);
@@ -491,14 +485,20 @@ static void hide(client_t *client);
 static void show(client_t *client);
 static void deletewin(client_t*);
 
+static void moveresize(xcb_drawable_t win, uint16_t x, uint16_t y,
+					   uint16_t width, uint16_t height);
+static void movewindow(xcb_drawable_t win, uint16_t x, uint16_t y);
+static client_t *findclient(xcb_drawable_t win);
+static client_t *findclientp(xcb_drawable_t win);
+static bool getpointer(xcb_drawable_t win, int16_t * x, int16_t * y);
+static bool getgeom(xcb_drawable_t win, int16_t * x, int16_t * y,
+					uint16_t * width, uint16_t * height);
+
 
 /* horrible naming TMP/TODO */
 static void hidden_event_mask(client_t *client);
 static void default_event_mask(client_t *client);
 
-static bool getpointer(xcb_drawable_t win, int16_t * x, int16_t * y);
-static bool getgeom(xcb_drawable_t win, int16_t * x, int16_t * y,
-					uint16_t * width, uint16_t * height);
 static void topleft(void);
 static void topright(void);
 static void botleft(void);
@@ -509,24 +509,14 @@ static void configwin(xcb_window_t win, uint16_t old_mask, winconf_t wc);
 static void events(void);
 static void printhelp(void);
 static void sigcatch(int sig);
-static xcb_atom_t get_atom(char *atom_name);
 
-#if DEBUG
-static char* get_atomname(xcb_atom_t atom);
-#endif
 
 
 static void get_mondim(monitor_t* monitor, xcb_rectangle_t* sp);
 
-#if 0
-static int get_wm_name(xcb_window_t, char**, int*);
-static int get_wm_name_icccm(xcb_window_t, char**, int*);
-static int get_wm_name_ewmh(xcb_window_t, char**, int*);
-#endif
+static void cleanup(int code);
 
 /* Function bodies. */
-
-
 // XXX this is just a little precaution and encapsulation
 static void			set_mode(wm_mode_t modus)	{ MCWM_mode = modus; }
 static wm_mode_t	get_mode(void)				{ return MCWM_mode; }
@@ -1600,7 +1590,7 @@ bool setup_ewmh(void)
 		return false;
 	}
 
-	//	ewmh_1_4_NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
+//	ewmh_1_4_NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
 
 
 	ewmh_allowed_actions[0] = ewmh->_NET_WM_ACTION_MAXIMIZE_VERT;
@@ -1645,7 +1635,7 @@ bool setup_ewmh(void)
 
 	xcb_ewmh_set_wm_name(ewmh, screen->root, 4, "mcwm");
 	xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, screen->root);
-	xcb_ewmh_set_number_of_desktops(ewmh, screen_number, workspaces);
+	xcb_ewmh_set_number_of_desktops(ewmh, screen_number, WORKSPACES);
 	xcb_ewmh_set_active_window(ewmh, screen_number, 0);
 
 	ewmh_update_client_list();

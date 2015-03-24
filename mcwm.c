@@ -1068,14 +1068,8 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 	if (hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC &&
 			(hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE
 			 || hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
-		const int i = (geo.width - hints.base_width) / hints.height_inc;
-		geo.width = hints.base_width + (i * hints.width_inc);
-
-		const int j = (geo.height - hints.base_height) / hints.height_inc;
-		geo.height = hints.base_height + (j * hints.height_inc);
-
-	//	client->width -= (client->width - client->base_width) % client->width_inc;
-	//	client->height -= (client->height - client->base_height) % client->height_inc;
+		geo.width -= (geo.width - hints.base_width) % hints.width_inc;
+		geo.height -= (geo.height - hints.base_height) % hints.height_inc;
 	}
 
 	/* Is it smaller than it wants to  be? */
@@ -2490,17 +2484,8 @@ void mouseresize(client_t *client, int rel_x, int rel_y)
 {
 	xcb_rectangle_t geo = client->geometry;
 
-	const uint16_t width  = geo.width;
-	const uint16_t height = geo.height;
-
-
 	geo.width = abs(rel_x - geo.x);
 	geo.height = abs(rel_y - geo.y);
-
-//	PDEBUG("Trying to resize to %dx%d (%dx%d)\n", client->width,
-//			client->height,
-//			(client->width - client->base_width) / client->width_inc,
-//			(client->height - client->base_height) / client->height_inc);
 
 	if (update_client_geometry(client, &geo) == 1)
 		return; // nothing changed
@@ -3237,11 +3222,11 @@ void handle_button_press(xcb_generic_event_t* ev)
 	 */
 	if (2 == e->detail) {
 		raiseorlower(focuswin);
-	} else {
+	} else if (! focuswin->maxed) {
 		int16_t pointx;
 		int16_t pointy;
 
-		/* We're moving or resizing. */
+		/* We're moving or resizing, ignore when maxed. */
 
 		/*
 		 * Get and save pointer position inside the window
@@ -3290,7 +3275,6 @@ void handle_button_press(xcb_generic_event_t* ev)
 				XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC,
 				screen->root, XCB_NONE, get_timestamp());
-
 
 		PDEBUG("mode now : %d\n", get_mode());
 	}

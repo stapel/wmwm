@@ -36,6 +36,8 @@
  * encapsulate geometry?
 ?* put resizing fixups (local vars) into a seperate function
  * hide() is now used generally, remove allow_icons stuff
+ * unparent clients, remove atoms ... on quit
+ * Destroy Window instead of xcb_kill_client() ?
  */
 
 #include <stdlib.h>
@@ -468,7 +470,7 @@ static void movelim(client_t *client);
 static void focusnext(void);
 static void setunfocus();
 static void setfocus(client_t *client);
-/* XXX */
+
 static void set_input_focus(xcb_window_t win);
 static void resizelim(client_t *client);
 static void resize(xcb_drawable_t win, uint16_t width, uint16_t height);
@@ -568,7 +570,6 @@ static void ewmh_update_state(client_t* client)
  * should always start with the window we're focusing
  * on.
  */
-/* XXX THIS DOES NOT REALLY WORK ALLWAYS FIX, this is really bad */
 void finishtabbing(void)
 {
 	PDEBUG("Finish tabbing!\n");
@@ -995,12 +996,6 @@ void withdraw_client(client_t* client)
 	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
 	xcb_generic_error_t *error;
 	xcb_void_cookie_t vc;
-
-/*  Remove it as well
-	mask = XCB_CW_EVENT_MASK;
-	values[0] = 0;
-	xcb_change_window_attributes(conn, client->id, mask, values);
-*/
 
 	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
 	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
@@ -1692,59 +1687,57 @@ bool setup_screen(void)
 		 */
 		if (!attr->override_redirect
 				&& attr->map_state == XCB_MAP_STATE_VIEWABLE) {
-			client = setup_win(children[i]);
-			// XXX just check for null
-			if (client) {
-				/*
-				 * Find the physical output this window will be on if
-				 * RANDR is active.
-				 */
-				if (randrbase != -1) {
-					PDEBUG("Looking for monitor on %d x %d.\n", client->x,
-							client->y);
-					client->monitor = findmonbycoord(client->x, client->y);
+			if (is_null(client = setup_win(children[i])))
+				continue;
+			/*
+			 * Find the physical output this window will be on if
+			 * RANDR is active.
+			 */
+			if (randrbase != -1) {
+				PDEBUG("Looking for monitor on %d x %d.\n", client->x,
+						client->y);
+				client->monitor = findmonbycoord(client->x, client->y);
 #if DEBUG
-					if (client->monitor) {
-						PDEBUG("Found client on monitor %s.\n",
-								client->monitor->name);
-					} else {
-						PDEBUG("Couldn't find client on any monitor.\n");
-					}
-#endif
-				}
-
-				/* Fit window on physical screen. */
-				fitonscreen(client);
-
-				/*
-				 * Check if this window has a workspace set already as
-				 * a WM hint.
-				 *
-				 */
-				ws = ewmh_get_workspace(children[i]);
-
-				if (ws == NET_WM_FIXED) {
-					/* Add to current workspace. */
-					addtoworkspace(client, curws);
-					/* Add to all other workspaces. */
-					fixwindow(client, false);
-					show(client);
-				} else if (ws < WORKSPACES) {
-					addtoworkspace(client, ws);
-					/* If it's on our current workspace, show it, else hide it. */
-					if (ws == curws) {
-						show(client);
-					} else {
-						hide(client);
-					}
+				if (client->monitor) {
+					PDEBUG("Found client on monitor %s.\n",
+							client->monitor->name);
 				} else {
-					/*
-					 * No workspace hint at all. Just add it to our
-					 * current workspace.
-					 */
-					addtoworkspace(client, curws);
-					show(client);
+					PDEBUG("Couldn't find client on any monitor.\n");
 				}
+#endif
+			}
+
+			/* Fit window on physical screen. */
+			fitonscreen(client);
+
+			/*
+			 * Check if this window has a workspace set already as
+			 * a WM hint.
+			 *
+			 */
+			ws = ewmh_get_workspace(children[i]);
+
+			if (ws == NET_WM_FIXED) {
+				/* Add to current workspace. */
+				addtoworkspace(client, curws);
+				/* Add to all other workspaces. */
+				fixwindow(client, false);
+				show(client);
+			} else if (ws < WORKSPACES) {
+				addtoworkspace(client, ws);
+				/* If it's on our current workspace, show it, else hide it. */
+				if (ws == curws) {
+					show(client);
+				} else {
+					hide(client);
+				}
+			} else {
+				/*
+				 * No workspace hint at all. Just add it to our
+				 * current workspace.
+				 */
+				addtoworkspace(client, curws);
+				show(client);
 			}
 		}
 		destroy(attr);
@@ -1845,7 +1838,6 @@ void getrandr(void)
 	xcb_randr_get_screen_resources_current_reply_t *res;
 	xcb_randr_output_t *outputs;
 	int len;
-	xcb_timestamp_t timestamp;
 
 	rcookie = xcb_randr_get_screen_resources_current(conn, screen->root);
 	res = xcb_randr_get_screen_resources_current_reply(conn, rcookie, NULL);
@@ -1853,18 +1845,15 @@ void getrandr(void)
 		printf("No RANDR extension available.\n");
 		return;
 	}
-	timestamp = res->config_timestamp;
+	update_timestamp(res->config_timestamp);
 
-	update_timestamp(timestamp);
-
-	// XXX len ought to be uint, at least it is internal for xcb-randr
 	len = xcb_randr_get_screen_resources_current_outputs_length(res);
 	outputs = xcb_randr_get_screen_resources_current_outputs(res);
 
 	PDEBUG("Found %d outputs.\n", len);
 
 	/* Request information for all outputs. */
-	getoutputs(outputs, len, timestamp);
+	getoutputs(outputs, len, res->config_timestamp);
 
 	destroy(res);
 }
@@ -2236,14 +2225,7 @@ void movewindow(xcb_drawable_t win, uint16_t x, uint16_t y)
 void focusnext(void)
 {
 
-	// XXX check for only one client on list, skip if focussed
 	client_t *client = NULL;
-
-#if DEBUG
-	if (focuswin) {
-		PDEBUG("Focus now in win 0x%x\n", focuswin->id);
-	}
-#endif
 
 	if (is_null(wslist[curws])) {
 		PDEBUG("No windows to focus on in this workspace.\n");
@@ -2266,13 +2248,6 @@ void focusnext(void)
 	if (is_null(focuswin) || is_null(focuswin->wsitem[curws])) {
 		PDEBUG("Focusing first in list: @%p\n", (void*)wslist[curws]);
 		client = wslist[curws]->data;
-#if DEBUG
-		if (focuswin && is_null(focuswin->wsitem[curws])) {
-			// XXX
-			PDEBUG("XXX Our focused window 0x%x isn't on this workspace!\n",
-					focuswin->id);
-		}
-#endif
 	} else {
 		if (is_null(focuswin->wsitem[curws]->next)) {
 			/*
@@ -2307,7 +2282,6 @@ void focusnext(void)
 	}
 }
 
-// XXX win vs focuswin?
 /* Mark window win as unfocused. */
 void setunfocus()
 {
@@ -2316,9 +2290,6 @@ void setunfocus()
 	PDEBUG("setunfocus() focuswin = 0x%x\n", focuswin ? focuswin->frame : 0);
 	if (is_null(focuswin))
 		return;
-
-	/* add when there is an atom on that window that marks it focused */
-	//	ewmh_update_state(focuswin);
 
 	/* Set new border colour. */
 	values[0] = conf.unfocuscol;
@@ -2406,13 +2377,7 @@ void setfocus(client_t *client)
 {
 	uint32_t values[1];
 
-	/* XXX this is not true anymore
-	 * If client is NULL, we focus on whatever the pointer is on.
-	 *
-	 * This is a pathological case, but it will make the poor user
-	 * able to focus on windows anyway, even though this window
-	 * manager might be buggy.
-	 */
+	/* If client is NULL, focus on root */
 	if (is_null(client)) {
 		PDEBUG("setfocus: client was NULL! \n");
 
@@ -3152,7 +3117,6 @@ void deletewin(client_t* client)
 				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
 	} else {
 		/* WM_DELETE_WINDOW either NA or failed 3 times  */
-		/* TODO * Destroy Window instead ? */
 		PDEBUG("deletewin: 0x%x (kill_client)\n", client->id);
 		xcb_kill_client(conn, client->id);
 	}
@@ -3589,7 +3553,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 void handle_key_press(xcb_generic_event_t *ev)
 {
 	int i;
-	key_enum_t key;
+	key_enum_t key = KEY_MAX;
 
 	xcb_key_press_event_t *e = (xcb_key_press_event_t*)ev;
 
@@ -3598,7 +3562,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 	PDEBUG("key_press: Key %d pressed (state: %d).\n", e->detail, e->state);
 
 	/* XXX * this should be superflous as we only grab wanted keys */
-	for (key = KEY_MAX, i = KEY_F; i < KEY_MAX; i++) {
+	for (i = KEY_F; i < KEY_MAX; i++) {
 		if (keys[i].keycode && e->detail == keys[i].keycode) {
 			key = i;
 			break;
@@ -3610,16 +3574,13 @@ void handle_key_press(xcb_generic_event_t *ev)
 		finishtabbing();
 	}
 
+	/* TODO impossible -> grabbed keys ? */
 	if (key == KEY_MAX) {
 		PDEBUG("key_press: Unknown key pressed.\n");
 
 		/*
 		 * We don't know what to do with this key. Send this key press
 		 * event to the focused window.
-		 *
-		 * XXX
-		 * We should not have received this key because we didn't
-		 * grab it
 		 */
 		xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
 				XCB_EVENT_MASK_NO_EVENT, (char *) e);
@@ -4221,7 +4182,6 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		} // switch
 
 	} // if _net_wm_state
-//	} else if (e->type == ewmh->_NET_CURRENT_DESKTOP) {
 }
 
 void handle_circulate_request(xcb_generic_event_t *ev)

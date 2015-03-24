@@ -457,15 +457,12 @@ static monitor_t *addmonitor(xcb_randr_output_t id, char *name,
 								  uint16_t height);
 
 static void raise_client(client_t *client); // XXX replace the following
-static void raisewindow(xcb_drawable_t win);
 static void raiseorlower(client_t *client);
-static void movelim(client_t *client);
 static void focusnext(void);
 static void setunfocus();
 static void setfocus(client_t *client);
 
 static void set_input_focus(xcb_window_t win);
-static void resizelim(client_t *client);
 static void resizestep(client_t *client, char direction);
 static void mousemove(client_t *client, int rel_x, int rel_y);
 static void mouseresize(client_t *client, int rel_x, int rel_y);
@@ -2128,18 +2125,6 @@ void raise_client(client_t *client)
 {
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
 	xcb_configure_window(conn, client->frame, XCB_CONFIG_WINDOW_STACK_MODE, values);
-}
-
-/* Raise window win to top of stack. */
-void raisewindow(xcb_drawable_t win)
-{
-	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
-
-	if (screen->root == win || 0 == win) {
-		return;
-	}
-
-	xcb_configure_window(conn, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
 
 /*

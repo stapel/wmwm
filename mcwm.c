@@ -24,37 +24,20 @@
  */
 
 /* XXX THINGS TODO XXX
- - sometimes windows get lost
- - LVDS is seen as clone of VGA-0? look at special-log
- - DestroyNotify after UnmapNotify produces wrong read? (see special log)
- - TODO Maybe it segfaults when an unmapped windows is being killed ?? TODO
- - Error handling
- - (windows in hashmap, dont fiddle with pointers)
- - key handling, automate a little further, it looks really ugly
-# - there isnt allways a focus once I enter a virtual desktop (esp mplayer)
- -  we dont switch screens
- - maximize to v/h not fullscreen - only use fullscreen via hint from app
- - save rect for each v/h/fs maximizations and update
- - register events for client? (so keep client struct for window?)
- - now it stops working sometimes, no reaction in keys
-   (with no windows available)
- - synthetic unmap notify handling
- - ctrl-meta-x maximize (v + h)
- - ctrl-meta-z fullscreen
- - initial atoms (esp. _NET_WM_STATE_FULLSCREEN etc.)
- - maximize and fitonscreen share similar code
- - unmaxed size is not allways fitting
- - resizing in constriants!
- - put resizing fixups (local vars) into a seperate function
- - !BAD see 5755
- - hide() is now used generally, remove allow_icons stuff
-
-
-
- XXX
- - all clients have the same border color
-
+!* rarely a segfault happens
+ * LVDS is seen as clone of VGA-0? look at special-log
+!* Error handling
+ * key handling, automate a little further, it looks really ugly
+ * maximize to v/h not fullscreen - only use fullscreen via hint from app
+ * register events for client? (so keep client struct for window?)
+ * synthetic unmap notify handling
+ * initial atoms (esp. _NET_WM_STATE_FULLSCREEN etc.)
+!* maximize and fitonscreen share similar code
+ * encapsulate geometry?
+?* put resizing fixups (local vars) into a seperate function
+ * hide() is now used generally, remove allow_icons stuff
  */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>

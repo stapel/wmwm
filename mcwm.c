@@ -1411,7 +1411,7 @@ client_t *setup_win(xcb_window_t win)
 		remove_client(client);
 		return NULL;
 	}
-	client->geometry_last = client->geometry_last;
+	client->geometry_last = client->geometry;
 
 	reparent(client);
 

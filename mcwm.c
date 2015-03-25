@@ -139,7 +139,7 @@ typedef enum {
 
 
 
-static inline bool is_null(void *ptr)
+static inline bool is_null(const void const *ptr)
 {
 	return (ptr == (void*)NULL);
 }
@@ -214,7 +214,7 @@ typedef struct client {
 	bool ewmh_state_set;
 
 	bool vertmaxed;				/* Vertically maximized? XXX not fullscreen at all */
-	bool maxed;					/* Totally maximized? XXX aka fullscreen*/
+	bool fullscreen;					/* Totally maximized? XXX aka fullscreen*/
 	bool fixed;					/* Visible on all workspaces? */
 
 	int killed;
@@ -462,6 +462,7 @@ static void focusnext(void);
 static void setunfocus();
 static void setfocus(client_t *client);
 
+static int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry);
 static void set_input_focus(xcb_window_t win);
 static void resizestep(client_t *client, char direction);
 static void mousemove(client_t *client, int rel_x, int rel_y);
@@ -526,7 +527,7 @@ static void ewmh_update_state(client_t* client)
 	if (! client)
 		return;
 
-	if (client->maxed)
+	if (client->fullscreen)
 		atoms[i++] = ewmh->_NET_WM_STATE_FULLSCREEN;
 	if (client->vertmaxed)
 		atoms[i++] = ewmh->_NET_WM_STATE_MAXIMIZED_VERT;
@@ -1034,17 +1035,12 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 {
 
 	/* check if geometry changed */
-	/* XXX bad because monitor update ? */
-	if (! memcmp(&geometry, &(client->geometry), sizeof(xcb_rectangle_t)))
+	if (! is_null(geometry) && memcmp(&geometry, &(client->geometry), sizeof(xcb_rectangle_t)) == 0)
 		return 1;
 
 	xcb_rectangle_t monitor;
 	xcb_rectangle_t geo;
 
-	if (geometry == NULL) // update because monitor change e.g.
-		geo = client->geometry;
-	else
-		geo = *geometry;
 
 	get_monitor_geometry(client->monitor, &monitor);
 
@@ -1052,6 +1048,19 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 	 * initialize em properly
 	 * if base_n is missing, use min_n...
 	 */
+
+	/* Fullscreen, skip the checks  */
+	if (client->fullscreen) {
+//		if (is_null(geometry)) // XXX check here to see if something goes wrong
+		geo = monitor;
+		goto out;
+	}
+
+	if (is_null(geometry)) // update because monitor change e.g.
+		geo = client->geometry;
+	else
+		geo = *geometry;
+
 
 	/* TODO urgent: FULL SCREEN HANDLING */
 	/* XXX check if monitor changed and we are checking this here for good */
@@ -1081,9 +1090,9 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 			geo.width = hints.min_width;
 	}
 
-	/* Is it bigger than our viewport? */
-	const int border = client->maxed ? 0 : conf.borderwidth;
+	const int border = client->fullscreen ? 0 : conf.borderwidth;
 
+	/* Is it bigger than our viewport? */
 	if (geo.width + border * 2 > monitor.width)
 		geo.width = monitor.width - border * 2;
 
@@ -1105,20 +1114,20 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 	 */
 	if (geo.x < monitor.x)
 		geo.x = monitor.x;
-	else if (geo.x + geo.width + border > monitor.width + monitor.x)
-		geo.x = monitor.x + monitor.width - geo.width - border;
+	else if (geo.x + geo.width + border*2 > monitor.width + monitor.x)
+		geo.x = monitor.x + monitor.width - geo.width - border*2;
 	else if (geo.x > monitor.x + monitor.width)
-		geo.x = monitor.x + monitor.width - geo.width - border;
+		geo.x = monitor.x + monitor.width - geo.width - border*2;
 
 	if (geo.y < monitor.y)
 		geo.y = monitor.y;
-	else if (geo.y + geo.height + border > monitor.height + monitor.y)
-		geo.y = monitor.y + monitor.height - geo.height - border;
+	else if (geo.y + geo.height + border*2 > monitor.height + monitor.y)
+		geo.y = monitor.y + monitor.height - geo.height - border*2;
 	else if (geo.y > monitor.y + monitor.height)
-		geo.y = monitor.y + monitor.height - geo.height - border;
+		geo.y = monitor.y + monitor.height - geo.height - border*2;
 
 
-//ending: // for fullscreen ?
+out: ;
 
 	uint32_t values[2];
 	uint16_t value_mask = 0;
@@ -1149,8 +1158,16 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 		frame_values[fm++] = geo.height;
 	}
 
-	if (cm == 0 && fm == 0)
+	if (cm == 0 && fm == 0) {
+		PDEBUG("update_client_geometry: 0x%x not changed\n", client->id);
 		return 1;
+	}
+	PDEBUG("update_client_geometry: changing 0x%x to %d,%d %dx%d\n",
+			client->id,
+			geo.x,
+			geo.y,
+			geo.width,
+			geo.height);
 
 	client->geometry = geo;
 
@@ -1367,7 +1384,7 @@ client_t *setup_win(xcb_window_t win)
 	client->usercoord = false;
 
 	client->vertmaxed = false;
-	client->maxed = false;
+	client->fullscreen = false;
 	client->fixed = false;
 	client->monitor = NULL;
 
@@ -1397,8 +1414,14 @@ client_t *setup_win(xcb_window_t win)
 	client->geometry_last = client->geometry_last;
 
 	reparent(client);
-	setborders(client->frame, conf.borderwidth);
-	set_frame_extents(client->id, conf.borderwidth);
+
+	if (ewmh_is_fullscreen(client)) {
+		PDEBUG("0x%x is fullscreen right from startup\n", client->id);
+		maximize(client);
+	} else {
+		setborders(client->frame, conf.borderwidth);
+		set_frame_extents(client->id, conf.borderwidth);
+	}
 
 	if (shapebase != -1) {
 		xcb_shape_select_input(conn, client->id, 1);
@@ -1409,6 +1432,7 @@ client_t *setup_win(xcb_window_t win)
 	icccm_update_wm_hints(client);
 	icccm_update_wm_normal_hints(client);
 	icccm_update_wm_protocols(client);
+
 
 	ewmh_update_state(client);
 
@@ -2420,7 +2444,7 @@ void resizestep(client_t *client, char direction)
 
 	xcb_rectangle_t geometry = client->geometry;
 
-	if (client->maxed) {
+	if (client->fullscreen) {
 		/* Can't resize a fully maximized window. */
 		return;
 	}
@@ -2507,7 +2531,7 @@ void movestep(client_t *client, char direction)
 		return;
 	}
 
-	if (client->maxed) {
+	if (client->fullscreen) {
 		/* We can't move a fully maximized window. */
 		return;
 	}
@@ -2567,18 +2591,17 @@ void unmax(client_t *client)
 		PDEBUG("unmax: client was NULL!\n");
 		return;
 	}
-	if (!client->maxed && !client->vertmaxed) {
+	if (!client->fullscreen && !client->vertmaxed) {
 		PDEBUG("unmax: client was not maxed!\n");
 		return;
 	}
 
 	/* Restore geometry. */
+	client->fullscreen = client->vertmaxed = false;
 	update_client_geometry(client, &(client->geometry_last));
 
 	setborders(client->frame, conf.borderwidth);
 	set_frame_extents(client->id, conf.borderwidth);
-
-	client->maxed = client->vertmaxed = false;
 
 	/* Warp pointer to window or we might lose it. */
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
@@ -2601,7 +2624,7 @@ void maximize(client_t *client)
 	 */
 	if (client->vertmaxed) {
 		unmax(client);
-	} else if (client->maxed) { // XXX
+	} else if (client->fullscreen) { // XXX
 		PDEBUG("<> Client maximized, unmaximizing\n");
 		unmax(client);
 		ewmh_update_state(client);
@@ -2609,7 +2632,7 @@ void maximize(client_t *client)
 	}
 	PDEBUG("<> Client unmaximized, maximizing!\n");
 
-	client->maxed = true;
+	client->fullscreen = true;
 
 	client->geometry_last = client->geometry;
 
@@ -2636,7 +2659,7 @@ void maxvert(client_t *client)
 	/*
 	 * Check if maximized already. If so, revert to stored geometry.
 	 */
-	if (client->maxed) {
+	if (client->fullscreen) {
 		unmax(client);
 	} else if (client->vertmaxed) {
 		unmax(client);
@@ -2730,7 +2753,7 @@ void reparent(client_t *client)
 	xcb_create_window(conn, screen->root_depth, client->frame, screen->root,
 			geo->x, geo->y,
 			geo->width, geo->height,
-			client->maxed ? 0 : conf.borderwidth,
+			client->fullscreen ? 0 : conf.borderwidth,
 			XCB_WINDOW_CLASS_INPUT_OUTPUT,
 			XCB_COPY_FROM_PARENT,
 			mask, values);
@@ -2801,7 +2824,7 @@ void topleft(void)
 	int16_t pointy;
 	xcb_rectangle_t geo;
 
-	if (is_null(focuswin)) {
+	if (is_null(focuswin) || focuswin->fullscreen) {
 		return;
 	}
 
@@ -2827,7 +2850,7 @@ void topright(void)
 	int16_t pointy;
 	xcb_rectangle_t geo;
 
-	if (is_null(focuswin)) {
+	if (is_null(focuswin) || focuswin->fullscreen) {
 		return;
 	}
 
@@ -2854,7 +2877,7 @@ void botleft(void)
 	int16_t pointy;
 	xcb_rectangle_t geo;
 
-	if (is_null(focuswin)) {
+	if (is_null(focuswin) || focuswin->fullscreen) {
 		return;
 	}
 
@@ -2882,7 +2905,7 @@ void botright(void)
 	int16_t pointy;
 	xcb_rectangle_t geo;
 
-	if (is_null(focuswin)) {
+	if (is_null(focuswin) || focuswin->fullscreen) {
 		return;
 	}
 
@@ -3222,7 +3245,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 	 */
 	if (2 == e->detail) {
 		raiseorlower(focuswin);
-	} else if (! focuswin->maxed) {
+	} else if (! focuswin->fullscreen) {
 		int16_t pointx;
 		int16_t pointy;
 
@@ -3293,7 +3316,7 @@ void handle_motion_notify(xcb_generic_event_t *ev) //wunused
 
 	update_timestamp(e->time);
 
-	if (is_null(focuswin) || focuswin->maxed) {
+	if (is_null(focuswin) || focuswin->fullscreen) {
 		return;
 	}
 
@@ -3777,7 +3800,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 #endif
 
 	/* Don't resize if maximized. */
-	if (! client->maxed) {
+	if (! client->fullscreen) {
 		if (e->value_mask & XCB_CONFIG_WINDOW_WIDTH)
 			geometry.width = e->width;
 		if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
@@ -3842,7 +3865,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	/* Some window want's to know how our frame extends, anyone welcome */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
 		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n", e->window);
-		set_frame_extents(e->window, client && client->maxed ? 0 : conf.borderwidth);
+		set_frame_extents(e->window, client && client->fullscreen ? 0 : conf.borderwidth);
 		return;
 	}
 
@@ -3910,7 +3933,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		switch (action) {
 			case XCB_EWMH_WM_STATE_ADD:
 				PDEBUG(">> add\n");
-				if (fs && !client->maxed) {
+				if (fs && !client->fullscreen) {
 					maximize(client);
 					break;
 				}
@@ -3932,7 +3955,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 				break;
 			case XCB_EWMH_WM_STATE_REMOVE:
 				PDEBUG(">> remove\n");
-				if (fs && client->maxed) {
+				if (fs && client->fullscreen) {
 					maximize(client);
 					break;
 				}

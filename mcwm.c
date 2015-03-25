@@ -51,8 +51,6 @@
 #include <signal.h>
 #include <assert.h>
 
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <sys/select.h>
 
 #include <xcb/xcb.h>
@@ -581,8 +579,6 @@ struct modkeycodes getmodkeys(xcb_mod_mask_t modmask)
 		NULL,
 		0
 	};
-	int mask;
-	unsigned i;
 	const xcb_mod_mask_t masks[8] = { XCB_MOD_MASK_SHIFT,
 		XCB_MOD_MASK_LOCK,
 		XCB_MOD_MASK_CONTROL,
@@ -625,9 +621,9 @@ struct modkeycodes getmodkeys(xcb_mod_mask_t modmask)
 	 * server. Zeroes are used to fill in unused elements within each
 	 * set.
 	 */
-	for (mask = 0; mask < 8; mask++) {
+	for (int mask = 0; mask < 8; mask++) {
 		if (masks[mask] == modmask) {
-			for (i = 0; i < reply->keycodes_per_modifier; i++) {
+			for (uint8_t i = 0; i < reply->keycodes_per_modifier; i++) {
 				if (0 != modmap[mask * reply->keycodes_per_modifier + i]) {
 					keycodes.keycodes[i]
 						= modmap[mask * reply->keycodes_per_modifier + i];
@@ -637,7 +633,6 @@ struct modkeycodes getmodkeys(xcb_mod_mask_t modmask)
 			PDEBUG("Got %d keycodes.\n", keycodes.len);
 		}
 	}							/* for mask */
-
 	destroy(reply);
 
 	return keycodes;
@@ -711,7 +706,7 @@ void ewmh_update_client_list()
 	}
 
 	/* fill window array */
-	int id = windows;
+	uint32_t id = windows;
 	for (item = winlist; item; item = item->next) {
 		client = item->data;
 		window_list[--id] = client->id;
@@ -742,7 +737,6 @@ bool ewmh_is_fullscreen(client_t* client)
 			&atoms, NULL)) {
 		return false;
 	}
-
 	bool ret = false;
 	for (uint32_t i = 0; i < atoms.atoms_len; i++) {
 		if (atoms.atoms[i] == ewmh->_NET_WM_STATE_FULLSCREEN) {

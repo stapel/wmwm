@@ -2286,7 +2286,7 @@ client_t *findclientp(xcb_drawable_t win)
 	for (item_t *item = winlist; item; item = item->next) {
 		client = item->data;
 		if (win == client->id) {
-			PDEBUG("findclientp(): Win: 0x%x (id)\n ", win);
+			PDEBUG("findclientp(): Win: 0x%x (id)\n", win);
 			return client;
 		} else if (win == client->frame) {
 			PDEBUG("findclientp(): Win: 0x%x (frame)\n", win);
@@ -2322,7 +2322,7 @@ client_t *findclient(xcb_drawable_t win)
 	for (item_t *item = winlist; item; item = item->next) {
 		client = item->data;
 		if (win == client->id) {
-			PDEBUG("findclient(): Win: 0x%x (id)\n ", win);
+			PDEBUG("findclient(): Win: 0x%x (id)\n", win);
 			return client;
 		}
 	}

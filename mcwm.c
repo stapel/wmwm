@@ -988,7 +988,7 @@ void withdraw_client(client_t* client)
 	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
 	error = xcb_request_check(conn, vc);
 	if (! error) {
-		PDEBUG(" and set window to withdrawn state");
+		PDEBUG(" and set window to withdrawn state\n");
 		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
 	} else {
@@ -2162,24 +2162,6 @@ void raiseorlower(client_t *client)
 	win = client->frame;
 
 	xcb_configure_window(conn, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
-}
-
-/* Move window win to root coordinates x,y. */
-void movewindow(xcb_drawable_t win, uint16_t x, uint16_t y)
-{
-	uint32_t values[2];
-
-	if (win == screen->root || win == XCB_WINDOW_NONE) {
-		/* Can't move root. */
-		return;
-	}
-
-	values[0] = x;
-	values[1] = y;
-
-	xcb_configure_window(conn, win, XCB_CONFIG_WINDOW_X
-			| XCB_CONFIG_WINDOW_Y, values);
-
 }
 
 /* Change focus to next in window ring. */

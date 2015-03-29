@@ -98,10 +98,10 @@ typedef enum {
 } wm_mode_t;
 
 typedef enum {
-	step_up,
-	step_down,
-	step_left,
-	step_right
+	step_up 	= 1 << 0,
+	step_down 	= 1 << 1,
+	step_left 	= 1 << 2,
+	step_right 	= 1 << 3
 } step_direction_t;
 
 /* Number of workspaces. */
@@ -362,7 +362,7 @@ static xcb_atom_t ewmh_allowed_actions[2] = { XCB_ATOM_NONE, XCB_ATOM_NONE };
 /* print out X error to stderr */
 static void print_x_error(xcb_generic_error_t *e);
 
-/* Handlers */
+/* event handlers */
 static void handle_error_event(xcb_generic_event_t*);
 static void handle_map_request(xcb_generic_event_t*);
 static void handle_button_press(xcb_generic_event_t*);
@@ -406,31 +406,56 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 #endif
 	[XCB_PROPERTY_NOTIFY]	= handle_property_notify
 };
-static void finishtabbing(void);
 
-
-static bool ewmh_is_fullscreen(client_t*);
-static int32_t ewmh_get_workspace(xcb_drawable_t win);
-static void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws);
-static void ewmh_update_client_list();
-
-static void set_shape(client_t* client);
-static void set_frame_extents(xcb_window_t win, int width);
-
+static uint32_t getcolor(const char *colstr);
 static xcb_atom_t get_atom(char *atom_name);
 #if DEBUG
 static char* get_atomname(xcb_atom_t atom);
 #endif
 
+static bool ewmh_is_fullscreen(client_t*);
+static void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws);
+static int32_t ewmh_get_workspace(xcb_drawable_t win);
+static void ewmh_update_client_list();
+static void ewmh_frame_extents(xcb_window_t win, int width);
+
+
+static void resizestep(client_t *client, step_direction_t direction);
+static void mousemove(client_t *client, int rel_x, int rel_y);
+static void mouseresize(client_t *client, int rel_x, int rel_y);
+static void movestep(client_t *client, step_direction_t direction);
+
 static void addtoworkspace(client_t *client, uint32_t ws);
 static void delfromworkspace(client_t *client, uint32_t ws);
 static void changeworkspace(uint32_t ws);
 
-static void fixwindow(client_t *client, bool setcolour);
+static void fix_client(client_t *client, bool set_color);
+static void set_shape(client_t* client);
+static void raise_client(client_t *client);
+static void raiseorlower(client_t *client);
+static void setfocus(client_t *client);
+static void setunfocus();
+static void focusnext(void);
+static void finishtabbing(void);
 
-static uint32_t getcolor(const char *colstr);
+static void toggle_fullscreen(client_t *client);
+static void toggle_vertical(client_t *client);
+static void unmax(client_t *client);
 
+static void attach_frame(client_t *client);
+static void deletewin(client_t*);
+static void hide(client_t *client);
 static void remove_client(client_t *client);
+static void show(client_t *client);
+
+
+
+
+
+static void set_input_focus(xcb_window_t win);
+static void setborders(xcb_drawable_t win, int width);
+
+static void arrbymon(monitor_t *monitor);
 static void arrangewindows(void);
 
 static int start(char *program);
@@ -443,14 +468,13 @@ static xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym,
 
 static bool setup_keys(void);
 static bool setup_screen(void);
-static bool setup_icccm(void);
 static bool setup_ewmh(void);
+static bool setup_icccm(void);
 static int setup_randr(void);
-
 static void getrandr(void);
 static void getoutputs(xcb_randr_output_t * outputs, int len,
 					   xcb_timestamp_t timestamp);
-void arrbymon(monitor_t *monitor);
+
 static monitor_t *findmonitor(xcb_randr_output_t id);
 static monitor_t *findclones(xcb_randr_output_t id, int16_t x, int16_t y);
 static monitor_t *findmonbycoord(int16_t x, int16_t y);
@@ -459,41 +483,21 @@ static monitor_t *addmonitor(xcb_randr_output_t id, char *name,
 								  uint32_t x, uint32_t y, uint16_t width,
 								  uint16_t height);
 
-static void raise_client(client_t *client);
-static void raiseorlower(client_t *client);
-static void focusnext(void);
-static void setunfocus();
-static void setfocus(client_t *client);
 
 static int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry);
-static void set_input_focus(xcb_window_t win);
-static void resizestep(client_t *client, step_direction_t direction);
-static void mousemove(client_t *client, int rel_x, int rel_y);
-static void mouseresize(client_t *client, int rel_x, int rel_y);
-static void movestep(client_t *client, step_direction_t direction);
-static void setborders(xcb_drawable_t win, int width);
-static void unmax(client_t *client);
-static void maximize(client_t *client);
-static void maxvert(client_t *client);
-static void reparent(client_t *client);
-static void hide(client_t *client);
-static void show(client_t *client);
-static void deletewin(client_t*);
+
 
 static client_t *findclient(xcb_drawable_t win);
 static client_t *findclientp(xcb_drawable_t win);
+
 static bool getpointer(xcb_drawable_t win, int16_t * x, int16_t * y);
 static bool get_geometry(xcb_drawable_t win, xcb_rectangle_t *geometry);
 
 
-/* horrible naming TMP/TODO */
-static void hidden_event_mask(client_t *client);
-static void default_event_mask(client_t *client);
+static void set_hidden_events(client_t *client);
+static void set_default_events(client_t *client);
 
-static void topleft(void);
-static void topright(void);
-static void botleft(void);
-static void botright(void);
+static void warp_focuswin(step_direction_t direction);
 static void prevscreen(void);
 static void nextscreen(void);
 static void configwin(xcb_window_t win, uint16_t old_mask, winconf_t wc);
@@ -716,7 +720,7 @@ void ewmh_update_client_list()
 		window_list[--id] = client->id;
 	}
 	xcb_ewmh_set_client_list(ewmh, screen_number, windows, window_list);
-	free(window_list);
+	destroy(window_list);
 }
 
 /* Set the EWMH hint that window win belongs on workspace ws. */
@@ -833,7 +837,7 @@ void changeworkspace(uint32_t ws)
 	for (item = wslist[curws]; item; item = item->next) {
 		client = item->data;
 		if (! client->fixed) {
-			hidden_event_mask(client);
+			set_hidden_events(client);
 		}
 	}
 	/* Go through list of current ws. Unmap everything that isn't fixed. */
@@ -868,7 +872,7 @@ void changeworkspace(uint32_t ws)
 	for (item = wslist[ws]; item; item = item->next) {
 		client = item->data;
 		if (! client->fixed) {
-			default_event_mask(client);
+			set_default_events(client);
 		}
 	}
 	xcb_flush(conn);
@@ -879,10 +883,10 @@ void changeworkspace(uint32_t ws)
 }
 
 /*
- * Fix or unfix a window client from all workspaces. If setcolour is
+ * Fix or unfix a window client from all workspaces. If set_color is
  * set, also change back to ordinary focus colour when unfixing.
  */
-void fixwindow(client_t *client, bool setcolour)
+void fix_client(client_t *client, bool set_color)
 {
 	if (is_null(client))
 		return;
@@ -891,7 +895,7 @@ void fixwindow(client_t *client, bool setcolour)
 		client->fixed = false;
 		ewmh_set_workspace(client->id, curws);
 
-		if (setcolour) {
+		if (set_color) {
 			/* Set border color to ordinary focus colour. */
 			uint32_t values[1] = { conf.focuscol };
 			xcb_change_window_attributes(conn, client->frame,
@@ -922,7 +926,7 @@ void fixwindow(client_t *client, bool setcolour)
 			}
 		}
 
-		if (setcolour) {
+		if (set_color) {
 			/* Set border color to fixed colour. */
 			uint32_t values[1] = { conf.fixedcol };
 			xcb_change_window_attributes(conn, client->frame,
@@ -1040,7 +1044,6 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 
 	/* Fullscreen, skip the checks  */
 	if (client->fullscreen) {
-//		if (is_null(geometry)) // XXX check here to see if something goes wrong
 		geo = monitor;
 		goto out;
 	}
@@ -1050,8 +1053,6 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 	else
 		geo = *geometry;
 
-
-	/* TODO urgent: FULL SCREEN HANDLING */
 	/* XXX check if monitor changed and we are checking this here for good */
 
 	const xcb_size_hints_t hints = client->hints;
@@ -1240,7 +1241,7 @@ void new_win(xcb_window_t win)
 	update_client_geometry(client, &geometry);
 
 	/* Show window on screen. */
-	default_event_mask(client);
+	set_default_events(client);
 	show(client);
 
 	/*
@@ -1275,20 +1276,30 @@ void icccm_update_wm_normal_hints(client_t* client)
 	 */
 	if (hints.flags & XCB_ICCCM_SIZE_HINT_US_POSITION)
 		client->usercoord = true;
-	if ((hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC)
-			&& !(hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
+//	if ((hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC)
+	if (!(hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
 			&& (hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
 		PDEBUG("base_size hints missing, using min_size\n");
 		hints.base_width = hints.min_width;
 		hints.base_height = hints.min_height;
+	} else if ((hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
+			&& (!(hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE))) {
+		PDEBUG("min_size hints missing, using base_size\n");
+		hints.min_width = hints.base_width;
+		hints.min_height = hints.base_height;
 	}
-	/* failsafes */
-	if (hints.width_inc < 1)
-		hints.width_inc = 1;
-	if (hints.height_inc < 1)
-		hints.height_inc = 1;
 
-	client->hints = hints;
+	if (!(hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC)) {
+		hints.width_inc = 1;
+		hints.height_inc = 1;
+	} else {
+		/* failsafes */
+		if (hints.width_inc < 1)
+			hints.width_inc = 1;
+		if (hints.height_inc < 1)
+			hints.height_inc = 1;
+		client->hints = hints;
+	}
 }
 
 /*
@@ -1402,14 +1413,14 @@ client_t *setup_win(xcb_window_t win)
 	}
 	client->geometry_last = client->geometry;
 
-	reparent(client);
+	attach_frame(client);
 
 	if (ewmh_is_fullscreen(client)) {
 		PDEBUG("0x%x is fullscreen right from startup\n", client->id);
-		maximize(client);
+		toggle_fullscreen(client);
 	} else {
 		setborders(client->frame, conf.borderwidth);
-		set_frame_extents(client->id, conf.borderwidth);
+		ewmh_frame_extents(client->id, conf.borderwidth);
 	}
 
 	if (shapebase != -1) {
@@ -1562,8 +1573,8 @@ bool setup_ewmh(void)
 	}
 
 	if (! xcb_ewmh_init_atoms_replies(ewmh, cookies, NULL)) {
-		free(ewmh);
-		free(cookies);
+		destroy(ewmh);
+		destroy(cookies);
 		return false;
 	}
 
@@ -1705,7 +1716,7 @@ bool setup_screen(void)
 				/* Add to current workspace. */
 				addtoworkspace(client, curws);
 				/* Add to all other workspaces. */
-				fixwindow(client, false);
+				fix_client(client, false);
 				show(client);
 			} else if (ws < WORKSPACES) {
 				addtoworkspace(client, ws);
@@ -1736,7 +1747,7 @@ bool setup_screen(void)
 
 	return true;
 }
-void set_frame_extents(xcb_window_t win, int width)
+void ewmh_frame_extents(xcb_window_t win, int width)
 {
 	long data[] = { width, width, width, width };
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, win, ewmh->_NET_FRAME_EXTENTS,
@@ -2551,14 +2562,14 @@ void unmax(client_t *client)
 	update_client_geometry(client, &(client->geometry_last));
 
 	setborders(client->frame, conf.borderwidth);
-	set_frame_extents(client->id, conf.borderwidth);
+	ewmh_frame_extents(client->id, conf.borderwidth);
 
 	/* Warp pointer to window or we might lose it. */
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 			client->geometry.width / 2, client->geometry.height / 2);
 }
 
-void maximize(client_t *client)
+void toggle_fullscreen(client_t *client)
 {
 	if (is_null(client))
 		   return;
@@ -2572,7 +2583,7 @@ void maximize(client_t *client)
 	 */
 	if (client->vertmaxed) {
 		unmax(client);
-	} else if (client->fullscreen) { // XXX
+	} else if (client->fullscreen) {
 		PDEBUG("<> Client maximized, unmaximizing\n");
 		unmax(client);
 		ewmh_update_state(client);
@@ -2586,14 +2597,14 @@ void maximize(client_t *client)
 
 	/* Remove borders. */
 	setborders(client->frame, 0);
-	set_frame_extents(client->id, 0);
+	ewmh_frame_extents(client->id, 0);
 	update_client_geometry(client, &monitor);
 	ewmh_update_state(client);
 
 	raise_client(client);
 }
 
-void maxvert(client_t *client)
+void toggle_vertical(client_t *client)
 {
 	xcb_rectangle_t monitor;
 
@@ -2630,14 +2641,14 @@ void maxvert(client_t *client)
 	ewmh_update_state(client);
 }
 
-void default_event_mask(client_t *client)
+void set_default_events(client_t *client)
 {
 	const uint32_t	mask = XCB_CW_EVENT_MASK;
 	const uint32_t	values[] = { DEFAULT_FRAME_EVENTS};
 	xcb_change_window_attributes(conn, client->frame, mask, values);
 }
 
-void hidden_event_mask(client_t *client)
+void set_hidden_events(client_t *client)
 {
 	const uint32_t	mask = XCB_CW_EVENT_MASK;
 	const uint32_t	values[] = { HIDDEN_FRAME_EVENTS};
@@ -2686,7 +2697,7 @@ void hide(client_t *client)
  * also install listening-events to parent and children
  * this does not check if there is allready a parent
  */
-void reparent(client_t *client)
+void attach_frame(client_t *client)
 {
 	/* mask and values for frame window */
 	uint32_t	mask = XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
@@ -2763,17 +2774,19 @@ bool get_geometry(xcb_drawable_t win, xcb_rectangle_t *geometry)
 	return true;
 }
 
-void topleft(void)
+void warp_focuswin(step_direction_t direction)
 {
 	int16_t pointx;
 	int16_t pointy;
-	xcb_rectangle_t geo;
 
 	if (is_null(focuswin) || focuswin->fullscreen) {
 		return;
 	}
 
-	get_monitor_geometry(focuswin->monitor, &geo);
+	xcb_rectangle_t mon;
+	xcb_rectangle_t geo = focuswin->geometry;
+
+	get_monitor_geometry(focuswin->monitor, &mon);
 
 	raise_client(focuswin);
 
@@ -2781,97 +2794,17 @@ void topleft(void)
 		return;
 	}
 
-	geo.width  = focuswin->geometry.width;
-	geo.height = focuswin->geometry.height;
+	if (direction & step_left)
+		geo.x = mon.x;
+	if (direction & step_right)
+		geo.x = mon.x + mon.width - (geo.width + conf.borderwidth * 2);
+	if (direction & step_up)
+		geo.y = mon.y;
+	if (direction & step_down)
+		geo.y = mon.y + mon.height - (geo.height + conf.borderwidth * 2);
 
 	if (update_client_geometry(focuswin, &geo)) {
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
-				0, 0, 0, 0, pointx, pointy);
-	}
-}
-
-void topright(void)
-{
-	int16_t pointx;
-	int16_t pointy;
-	xcb_rectangle_t geo;
-
-	if (is_null(focuswin) || focuswin->fullscreen) {
-		return;
-	}
-
-	get_monitor_geometry(focuswin->monitor, &geo);
-
-	raise_client(focuswin);
-
-	if (!getpointer(focuswin->id, &pointx, &pointy)) {
-		return;
-	}
-	geo.x += geo.width - (focuswin->geometry.width + conf.borderwidth * 2);
-	geo.width  = focuswin->geometry.width;
-	geo.height = focuswin->geometry.height;
-
-	if (update_client_geometry(focuswin, &geo)) {
-		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
-				0, 0, 0, 0, pointx, pointy);
-	}
-
-}
-
-void botleft(void)
-{
-	int16_t pointx;
-	int16_t pointy;
-	xcb_rectangle_t geo;
-
-	if (is_null(focuswin) || focuswin->fullscreen) {
-		return;
-	}
-
-	get_monitor_geometry(focuswin->monitor, &geo);
-
-	raise_client(focuswin);
-
-	if (!getpointer(focuswin->id, &pointx, &pointy)) {
-		return;
-	}
-
-	geo.y += geo.height - (focuswin->geometry.height + conf.borderwidth * 2);
-	geo.width = focuswin->geometry.width;
-	geo.height = focuswin->geometry.height;
-
-	if (update_client_geometry(focuswin, &geo)) {
-		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
-				0, 0, 0, 0, pointx, pointy);
-	}
-
-}
-
-void botright(void)
-{
-	int16_t pointx;
-	int16_t pointy;
-	xcb_rectangle_t geo;
-
-	if (is_null(focuswin) || focuswin->fullscreen) {
-		return;
-	}
-
-	get_monitor_geometry(focuswin->monitor, &geo);
-
-	raise_client(focuswin);
-
-	if (! getpointer(focuswin->id, &pointx, &pointy)) {
-		return;
-	}
-
-	geo.x += geo.width - (focuswin->geometry.width + conf.borderwidth * 2);
-	geo.y += geo.height - (focuswin->geometry.height + conf.borderwidth * 2);
-	geo.width = focuswin->geometry.width;
-	geo.height = focuswin->geometry.height;
-
-	if (update_client_geometry(focuswin, &geo)) {
-		xcb_warp_pointer(conn, XCB_WINDOW, focuswin->frame,
 				0, 0, 0, 0, pointx, pointy);
 	}
 
@@ -3344,7 +3277,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	PDEBUG("key_press: Key %d pressed (state: %d).\n", e->detail, e->state);
 
-	/* XXX * this should be superflous as we only grab wanted keys */
+	/* XXX * this might be superflous as we only grab wanted keys */
 	for (i = KEY_F; i < KEY_MAX; i++) {
 		if (keys[i].keycode && e->detail == keys[i].keycode) {
 			key = i;
@@ -3409,7 +3342,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_F:		/* f */
-					fixwindow(focuswin, true);
+					fix_client(focuswin, true);
 					break;
 
 				case KEY_H:		/* left */
@@ -3429,7 +3362,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_V:		/* v */
-					maxvert(focuswin);
+					toggle_vertical(focuswin);
 					break;
 
 				case KEY_R:		/* r */
@@ -3437,7 +3370,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_X:		/* x */
-					maximize(focuswin);
+					toggle_fullscreen(focuswin);
 					break;
 
 				case KEY_1:
@@ -3481,19 +3414,19 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_Y:
-					topleft();
+					warp_focuswin(step_up   | step_left);
 					break;
 
 				case KEY_U:
-					topright();
+					warp_focuswin(step_up   | step_right);
 					break;
 
 				case KEY_B:
-					botleft();
+					warp_focuswin(step_down | step_left);
 					break;
 
 				case KEY_N:
-					botright();
+					warp_focuswin(step_down | step_right);
 					break;
 
 				case KEY_END:
@@ -3510,7 +3443,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 				case KEY_ICONIFY:
 					if (conf.allowicons) {
-						hidden_event_mask(focuswin);
+						set_hidden_events(focuswin);
 						hide(focuswin);
 					}
 					break;
@@ -3760,10 +3693,10 @@ void handle_configure_request(xcb_generic_event_t *ev)
 			PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
 			if (e->border_width == 0) {
 				setborders(client->frame, 0);
-				set_frame_extents(client->id, 0);
+				ewmh_frame_extents(client->id, 0);
 			} else {
 				setborders(client->frame, conf.borderwidth);
-				set_frame_extents(client->id, conf.borderwidth);
+				ewmh_frame_extents(client->id, conf.borderwidth);
 			}
 		} */
 	}
@@ -3812,7 +3745,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	/* Some window want's to know how our frame extends, anyone welcome */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
 		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n", e->window);
-		set_frame_extents(e->window, client && client->fullscreen ? 0 : conf.borderwidth);
+		ewmh_frame_extents(e->window, client && client->fullscreen ? 0 : conf.borderwidth);
 		return;
 	}
 
@@ -3827,7 +3760,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		PDEBUG("client_message: wm_change_state\n");
 		if (conf.allowicons) {
 			if (e->data.data32[0] == XCB_ICCCM_WM_STATE_ICONIC) {
-				hidden_event_mask(client);
+				set_hidden_events(client);
 				hide(client);
 				return;
 			}
@@ -3881,33 +3814,33 @@ static void handle_client_message(xcb_generic_event_t *ev)
 			case XCB_EWMH_WM_STATE_ADD:
 				PDEBUG(">> add\n");
 				if (fs && !client->fullscreen) {
-					maximize(client);
+					toggle_fullscreen(client);
 					break;
 				}
 				if (max_v && !client->vertmaxed) {
-					maxvert(client);
+					toggle_vertical(client);
 					break;
 				}
 				break;
 			case XCB_EWMH_WM_STATE_TOGGLE:
 				PDEBUG(">> toggle\n");
 				if (fs) {
-					maximize(client);
+					toggle_fullscreen(client);
 					break;
 				}
 				if (max_v) {
-					maxvert(client);
+					toggle_vertical(client);
 					break;
 				}
 				break;
 			case XCB_EWMH_WM_STATE_REMOVE:
 				PDEBUG(">> remove\n");
 				if (fs && client->fullscreen) {
-					maximize(client);
+					toggle_fullscreen(client);
 					break;
 				}
 				if (fs && client->vertmaxed) {
-					maxvert(client);
+					toggle_vertical(client);
 					break;
 				}
 				break;
@@ -3968,7 +3901,7 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 
 
 	/*
-	 * Find the window in our *current* workspace list, then
+	 * Find the window in our global window list, then
 	 * forget about it. If it gets mapped, we add it to our
 	 * lists again then.
 	 *
@@ -3978,13 +3911,6 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 	 * workspaces, for instance, or it might be a window with
 	 * override redirect set. This is not an error.
 	 *
-	 * XXX We might need to look in the global window list,
-	 * after all. Consider if a window is unmapped on our last
-	 * workspace while changing workspaces... If we do this,
-	 * we need to keep track of our own windows and ignore
-	 * UnmapNotify on them. XXX is that I did that
-	 *
-	 * XXX all wrong
 	 */
 	// XXX
 	// maybe like evilwm c->ignore_unmap
@@ -4000,21 +3926,22 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 			e->event, e->window, e->sequence);
 
 	client_t *client = findclient(e->window);
-	if (client) {
-		/* we await that unmap, do nothing */
-		if (client->ignore_unmap > 0) {
-			client->ignore_unmap--;
-			PDEBUG("--ignore_unmap\n");
-			return;
-		}
+	if (! client)
+		return;
 
-		if (XCB_EVENT_SENT(ev)) {
-			// synthetic event, indicates wanting to withdrawn state
-			PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);
-		}
-		withdraw_client(client);
-		remove_client(client);
+	/* we await that unmap, do nothing */
+	if (client->ignore_unmap > 0) {
+		client->ignore_unmap--;
+		PDEBUG("--ignore_unmap\n");
+		return;
 	}
+
+	if (XCB_EVENT_SENT(ev)) {
+		// synthetic event, indicates wanting to withdrawn state
+		PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);
+	}
+	withdraw_client(client);
+	remove_client(client);
 }
 
 void handle_destroy_notify(xcb_generic_event_t *ev)
@@ -4057,7 +3984,6 @@ void handle_focus_in(xcb_generic_event_t *ev)
 {
 	xcb_focus_in_event_t *e = (xcb_focus_in_event_t*)ev;
 
-	// XXX I dont know what to do here, copied from dwm :P
 	if (focuswin &&
 			(e->event != focuswin->id && e->event != focuswin->frame)) {
 		setfocus(focuswin);
@@ -4167,7 +4093,8 @@ int main(int argc, char **argv)
 	xcb_screen_iterator_t iter;
 
 	set_timestamp(XCB_CURRENT_TIME);
-	ewmh = NULL; // XXX i dont like that
+
+	ewmh = NULL;
 
 	/* Install signal handlers. */
 

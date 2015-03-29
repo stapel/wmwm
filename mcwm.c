@@ -49,7 +49,7 @@
 #include <getopt.h>
 #include <string.h>
 #include <signal.h>
-#include <assert.h>
+//#include <assert.h>
 
 #include <sys/select.h>
 
@@ -96,6 +96,13 @@ typedef enum {
 	mode_tab      /* We're currently tabbing around the window list,
 				looking for a new window to focus on. */
 } wm_mode_t;
+
+typedef enum {
+	step_up,
+	step_down,
+	step_left,
+	step_right
+} step_direction_t;
 
 /* Number of workspaces. */
 #define WORKSPACES 10u
@@ -184,45 +191,43 @@ typedef struct monitor {
 
 	char *name;
 
-	// XXX xcb_rectangle_t
 	int16_t x;					/* X and Y. */
 	int16_t y;
 	uint16_t width;				/* Width in pixels. */
 	uint16_t height;			/* Height in pixels. */
 
-	item_t *item;			/* Pointer to our place in output list. */
+	item_t *item;				/* Pointer to our place in output list. */
 } monitor_t;
 
 /* Everything we know about a window. */
-// XXX original border size
 typedef struct client {
-	xcb_drawable_t id;			/* ID of this window. */
-	xcb_drawable_t frame;		/* ID of parent frame window. */
+	xcb_drawable_t id;				/* ID of this window. */
+	xcb_drawable_t frame;			/* ID of parent frame window. */
 
-	bool usercoord;				/* X,Y was set by -geom. */
+	bool usercoord;					/* X,Y was set by -geom. */
 
 	xcb_rectangle_t geometry;		/* current frame geometry */
 	xcb_rectangle_t geometry_last;	/* geometry from before maximizing */
 
-	xcb_size_hints_t hints;
+	xcb_size_hints_t hints;			/* WM_NORMAL_HINTS */
 //	xcb_icccm_wm_hints_t wm_hints;
 
-	bool allow_focus;			/* */
-	bool use_delete;
-	bool ewmh_state_set;
+	bool allow_focus;				/* allow setting the input-focus to this window */
+	bool use_delete;				/* use delete_window client message to kill a window */
+	bool ewmh_state_set;			/* is _NET_WM_STATE set? */
 
-	bool vertmaxed;				/* Vertically maximized? XXX not fullscreen at all */
-	bool fullscreen;					/* Totally maximized? XXX aka fullscreen*/
-	bool fixed;					/* Visible on all workspaces? */
+	bool vertmaxed;					/* Vertically maximized? XXX not fullscreen at all */
+	bool fullscreen;				/* Totally maximized? XXX aka fullscreen*/
+	bool fixed;						/* Visible on all workspaces? */
 
-	int killed;
+	int killed;						/* number of times we sent delete_window message */
 
-	int ignore_unmap;
+	int ignore_unmap;				/* number of unmap_notifications we shall ignore */
 
-	monitor_t *monitor;	/* The physical output this window is on. */
-	item_t *winitem;		/* Pointer to our place in global windows list. */
-	item_t *wsitem[WORKSPACES];	/* Pointer to our place in every
-										 * workspace window list. */
+	monitor_t *monitor;				/* The physical output this window is on. */
+	item_t *winitem;				/* Pointer to our place in global windows list. */
+	item_t *wsitem[WORKSPACES];		/* Pointer to our place in every
+									 * workspace window list. */
 } client_t;
 
 /* Window configuration data. */
@@ -454,7 +459,7 @@ static monitor_t *addmonitor(xcb_randr_output_t id, char *name,
 								  uint32_t x, uint32_t y, uint16_t width,
 								  uint16_t height);
 
-static void raise_client(client_t *client); // XXX replace the following
+static void raise_client(client_t *client);
 static void raiseorlower(client_t *client);
 static void focusnext(void);
 static void setunfocus();
@@ -462,10 +467,10 @@ static void setfocus(client_t *client);
 
 static int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry);
 static void set_input_focus(xcb_window_t win);
-static void resizestep(client_t *client, char direction);
+static void resizestep(client_t *client, step_direction_t direction);
 static void mousemove(client_t *client, int rel_x, int rel_y);
 static void mouseresize(client_t *client, int rel_x, int rel_y);
-static void movestep(client_t *client, char direction);
+static void movestep(client_t *client, step_direction_t direction);
 static void setborders(xcb_drawable_t win, int width);
 static void unmax(client_t *client);
 static void maximize(client_t *client);
@@ -538,7 +543,7 @@ static void ewmh_update_state(client_t* client)
 		xcb_ewmh_set_wm_state(ewmh, client->id, i, atoms);
 		client->ewmh_state_set = true;
 	} else if (client->ewmh_state_set) {
-		/* Why ewmh_state_set here ? */
+		/* remove atom if there's no state and an old atom */
 		xcb_delete_property(conn, client->id, ewmh->_NET_WM_STATE);
 		client->ewmh_state_set = false;
 	}
@@ -684,19 +689,18 @@ void arrangewindows(void)
 void ewmh_update_client_list()
 {
 	item_t *item;
-	client_t *client;
 	xcb_window_t *window_list;
 
 	uint32_t windows = 0;
 
-	/* count windows */
-	for (item = winlist; item; item = item->next, ++windows);
-
 	/* leave if no windows */
-	if (windows == 0) {
+	if (is_null(winlist)) {
 		xcb_ewmh_set_client_list(ewmh, screen_number, 0, NULL);
 		return;
 	}
+
+	/* count windows */
+	for (item = winlist; item; item = item->next, ++windows);
 
 	/* create window array */
 	window_list = calloc(windows, sizeof(xcb_window_t));
@@ -705,10 +709,10 @@ void ewmh_update_client_list()
 		return;
 	}
 
-	/* fill window array */
+	/* fill window array in reverse order */
 	uint32_t id = windows;
 	for (item = winlist; item; item = item->next) {
-		client = item->data;
+		const client_t* client = item->data;
 		window_list[--id] = client->id;
 	}
 	xcb_ewmh_set_client_list(ewmh, screen_number, windows, window_list);
@@ -727,9 +731,6 @@ void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws)
  */
 bool ewmh_is_fullscreen(client_t* client)
 {
-	if (is_null(client))
-		return false;
-
 	xcb_ewmh_get_atoms_reply_t atoms;
 
 	if (0 == xcb_ewmh_get_wm_state_reply(ewmh,
@@ -883,9 +884,8 @@ void changeworkspace(uint32_t ws)
  */
 void fixwindow(client_t *client, bool setcolour)
 {
-	if (is_null(client)) {
+	if (is_null(client))
 		return;
-	}
 
 	if (client->fixed) {
 		client->fixed = false;
@@ -997,11 +997,6 @@ void withdraw_client(client_t* client)
 /* Forget everything about client client. */
 void remove_client(client_t *client)
 {
-	if (is_null(client)) {
-		PDEBUG("remove_client: client was NULL\n");
-		return;
-	}
-
 	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
 
 	if (focuswin == client) focuswin = NULL;
@@ -1030,7 +1025,7 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 
 	/* check if geometry changed */
 	if (! is_null(geometry) && memcmp(&geometry, &(client->geometry), sizeof(xcb_rectangle_t)) == 0)
-		return 1;
+		return 0;
 
 	xcb_rectangle_t monitor;
 	xcb_rectangle_t geo;
@@ -1154,7 +1149,7 @@ out: ;
 
 	if (cm == 0 && fm == 0) {
 		PDEBUG("update_client_geometry: 0x%x not changed\n", client->id);
-		return 1;
+		return 0;
 	}
 	PDEBUG("update_client_geometry: changing 0x%x to %d,%d %dx%d\n",
 			client->id,
@@ -1170,7 +1165,7 @@ out: ;
 	if (cm)
 		xcb_configure_window(conn, client->id, value_mask, values);
 
-	return 0;
+	return 1;
 }
 
 /*
@@ -1383,7 +1378,7 @@ client_t *setup_win(xcb_window_t win)
 	client->monitor = NULL;
 
 	client->allow_focus = true;
-	client->use_delete = true;
+	client->use_delete = false;
 
 	client->ewmh_state_set = false;
 
@@ -1753,7 +1748,7 @@ void set_frame_extents(xcb_window_t win, int width)
  */
 void set_shape(client_t* client)
 {
-	/* XXX
+	/*
 	 * disable borders, they might appear
 	 */
 	xcb_shape_query_extents_reply_t *extents;
@@ -2089,11 +2084,9 @@ monitor_t *findmonbycoord(int16_t x, int16_t y)
 
 void delmonitor(monitor_t *mon)
 {
-	if (! is_null(mon)) {
-		PDEBUG("Deleting output %s.\n", mon->name);
-		destroy(mon->name);
-		freeitem(&monlist, NULL, mon->item);
-	}
+	PDEBUG("Deleting output %s.\n", mon->name);
+	destroy(mon->name);
+	freeitem(&monlist, NULL, mon->item);
 }
 
 monitor_t *addmonitor(xcb_randr_output_t id, char *name,
@@ -2148,10 +2141,8 @@ void raiseorlower(client_t *client)
 	uint32_t values[] = { XCB_STACK_MODE_OPPOSITE };
 	xcb_drawable_t win;
 
-	if (is_null(client)) {
-		PDEBUG("Raising NULL client\n");
+	if (is_null(client))
 		return;
-	}
 
 	win = client->frame;
 
@@ -2398,25 +2389,15 @@ int start(char *program)
 }
 
 /*
- * Resize window client in direction direction. Direction is:
- *
- * h = left, that is decrease width.
- *
- * j = down, that is, increase height.
- *
- * k = up, that is, decrease height.
- *
- * l = right, that is, increase width.
+ * Resize window client in direction direction.
  */
-/* XXX name enum direction */
-void resizestep(client_t *client, char direction)
+void resizestep(client_t *client, step_direction_t direction)
 {
 	int step_x = MOVE_STEP;
 	int step_y = MOVE_STEP;
 
-	if (is_null(client)) {
-		return;
-	}
+	if (is_null(client))
+		   return;
 
 	xcb_rectangle_t geometry = client->geometry;
 
@@ -2427,32 +2408,26 @@ void resizestep(client_t *client, char direction)
 
 	raise_client(client);
 
-	if (client->hints.width_inc > 1) {
+	if (client->hints.width_inc > 1)
 		step_x = client->hints.width_inc;
-	} else {
-		step_x = MOVE_STEP;
-	}
 
-	if (client->hints.height_inc > 1) {
+	if (client->hints.height_inc > 1)
 		step_y = client->hints.height_inc;
-	} else {
-		step_y = MOVE_STEP;
-	}
 
 	switch (direction) {
-		case 'h':
+		case step_left:
 			geometry.width  -= step_x;
 			break;
 
-		case 'j':
+		case step_up:
 			geometry.height += step_y;
 			break;
 
-		case 'k':
+		case step_down:
 			geometry.height -= step_y;
 			break;
 
-		case 'l':
+		case step_right:
 			geometry.width  += step_x;
 			break;
 	}							/* switch direction */
@@ -2487,7 +2462,7 @@ void mouseresize(client_t *client, int rel_x, int rel_y)
 	geo.width = abs(rel_x - geo.x);
 	geo.height = abs(rel_y - geo.y);
 
-	if (update_client_geometry(client, &geo) == 1)
+	if (! update_client_geometry(client, &geo))
 		return; // nothing changed
 
 	/* If this window was vertically maximized, remember that it isn't now. */
@@ -2497,15 +2472,14 @@ void mouseresize(client_t *client, int rel_x, int rel_y)
 	}
 }
 
-void movestep(client_t *client, char direction)
+void movestep(client_t *client, step_direction_t direction)
 {
 	int16_t start_x;
 	int16_t start_y;
 	xcb_rectangle_t geo = client->geometry;
 
-	if (is_null(client)) {
-		return;
-	}
+	if (is_null(client))
+		   return;
 
 	if (client->fullscreen) {
 		/* We can't move a fully maximized window. */
@@ -2519,19 +2493,19 @@ void movestep(client_t *client, char direction)
 
 	raise_client(client);
 	switch (direction) {
-		case 'h':
+		case step_left:
 			geo.x -= MOVE_STEP;
 			break;
 
-		case 'j':
+		case step_down:
 			geo.y += MOVE_STEP;
 			break;
 
-		case 'k':
+		case step_up:
 			geo.y -= MOVE_STEP;
 			break;
 
-		case 'l':
+		case step_right:
 			geo.x += MOVE_STEP;
 			break;
 	}							/* switch direction */
@@ -2542,9 +2516,10 @@ void movestep(client_t *client, char direction)
 	 * If the pointer was inside the window to begin with, move
 	 * pointer back to where it was, relative to the window.
 	 */
-	if (start_x > 0 - conf.borderwidth && start_x < client->geometry.width
-			+ conf.borderwidth && start_y > 0 - conf.borderwidth && start_y
-			< client->geometry.height + conf.borderwidth) {
+	if (start_x > 0 - conf.borderwidth
+			&& start_x < client->geometry.width + conf.borderwidth
+			&& start_y > 0 - conf.borderwidth
+			&& start_y < client->geometry.height + conf.borderwidth) {
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 				start_x, start_y);
 	}
@@ -2563,10 +2538,9 @@ void setborders(xcb_drawable_t win, int width)
 
 void unmax(client_t *client)
 {
-	if (is_null(client)) {
-		PDEBUG("unmax: client was NULL!\n");
-		return;
-	}
+	if (is_null(client))
+		   return;
+
 	if (!client->fullscreen && !client->vertmaxed) {
 		PDEBUG("unmax: client was not maxed!\n");
 		return;
@@ -2586,10 +2560,8 @@ void unmax(client_t *client)
 
 void maximize(client_t *client)
 {
-	if (is_null(client)) {
-		PDEBUG("maximize: client was NULL! \n");
-		return;
-	}
+	if (is_null(client))
+		   return;
 
 	xcb_rectangle_t monitor;
 	get_monitor_geometry(client->monitor, &monitor);
@@ -2625,10 +2597,8 @@ void maxvert(client_t *client)
 {
 	xcb_rectangle_t monitor;
 
-	if (is_null(client)) {
-		PDEBUG("maxvert: client was NULL\n");
-		return;
-	}
+	if (is_null(client))
+		   return;
 
 	get_monitor_geometry(client->monitor, &monitor);
 
@@ -2780,9 +2750,8 @@ bool get_geometry(xcb_drawable_t win, xcb_rectangle_t *geometry)
 			xcb_get_geometry_unchecked(conn, win),
 			NULL);
 
-	if (is_null(geom)) {
+	if (is_null(geom))
 		return false;
-	}
 
 	geometry->x = geom->x;
 	geometry->y = geom->y;
@@ -2815,9 +2784,10 @@ void topleft(void)
 	geo.width  = focuswin->geometry.width;
 	geo.height = focuswin->geometry.height;
 
-	update_client_geometry(focuswin, &geo);
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
-			0, 0, 0, 0, pointx, pointy);
+	if (update_client_geometry(focuswin, &geo)) {
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
+				0, 0, 0, 0, pointx, pointy);
+	}
 }
 
 void topright(void)
@@ -2840,10 +2810,11 @@ void topright(void)
 	geo.x += geo.width - (focuswin->geometry.width + conf.borderwidth * 2);
 	geo.width  = focuswin->geometry.width;
 	geo.height = focuswin->geometry.height;
-	update_client_geometry(focuswin, &geo);
 
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
-			0, 0, 0, 0, pointx, pointy);
+	if (update_client_geometry(focuswin, &geo)) {
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
+				0, 0, 0, 0, pointx, pointy);
+	}
 
 }
 
@@ -2869,9 +2840,10 @@ void botleft(void)
 	geo.width = focuswin->geometry.width;
 	geo.height = focuswin->geometry.height;
 
-	update_client_geometry(focuswin, &geo);
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
-			0, 0, 0, 0, pointx, pointy);
+	if (update_client_geometry(focuswin, &geo)) {
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
+				0, 0, 0, 0, pointx, pointy);
+	}
 
 }
 
@@ -2898,9 +2870,10 @@ void botright(void)
 	geo.width = focuswin->geometry.width;
 	geo.height = focuswin->geometry.height;
 
-	update_client_geometry(focuswin, &geo);
-	xcb_warp_pointer(conn, XCB_WINDOW, focuswin->frame,
-			0, 0, 0, 0, pointx, pointy);
+	if (update_client_geometry(focuswin, &geo)) {
+		xcb_warp_pointer(conn, XCB_WINDOW, focuswin->frame,
+				0, 0, 0, 0, pointx, pointy);
+	}
 
 }
 
@@ -2910,10 +2883,8 @@ void botright(void)
 
 void deletewin(client_t* client)
 {
-	if (is_null(client)) {
+	if (is_null(client))
 		return;
-	}
-
 
 	if (client->use_delete && client->killed++ < 3) {
 		/* WM_DELETE_WINDOW message */
@@ -3404,20 +3375,20 @@ void handle_key_press(xcb_generic_event_t *ev)
 		if (e->state & SHIFTMOD) {
 			/* META+CTRL+SHIFT */
 			switch (key) {
-				case KEY_H:		/* h */
-					resizestep(focuswin, 'h');
+				case KEY_H:		/* left */
+					resizestep(focuswin, step_left);
 					break;
 
-				case KEY_J:		/* j */
-					resizestep(focuswin, 'j');
+				case KEY_J:		/* down */
+					resizestep(focuswin, step_down);
 					break;
 
-				case KEY_K:		/* k */
-					resizestep(focuswin, 'k');
+				case KEY_K:		/* up */
+					resizestep(focuswin, step_up);
 					break;
 
-				case KEY_L:		/* l */
-					resizestep(focuswin, 'l');
+				case KEY_L:		/* right */
+					resizestep(focuswin, step_right);
 					break;
 
 				default:
@@ -3441,20 +3412,20 @@ void handle_key_press(xcb_generic_event_t *ev)
 					fixwindow(focuswin, true);
 					break;
 
-				case KEY_H:		/* h */
-					movestep(focuswin, 'h');
+				case KEY_H:		/* left */
+					movestep(focuswin, step_left);
 					break;
 
-				case KEY_J:		/* j */
-					movestep(focuswin, 'j');
+				case KEY_J:		/* down */
+					movestep(focuswin, step_down);
 					break;
 
-				case KEY_K:		/* k */
-					movestep(focuswin, 'k');
+				case KEY_K:		/* up */
+					movestep(focuswin, step_up);
 					break;
 
-				case KEY_L:		/* l */
-					movestep(focuswin, 'l');
+				case KEY_L:		/* right */
+					movestep(focuswin, step_right);
 					break;
 
 				case KEY_V:		/* v */
@@ -4059,25 +4030,26 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 	client_t *client = findclient(e->window);
 	PDEBUG("destroy_notify for 0x%x (is client = %d)\n", e->window, client ? 1 : 0);
 
-	if (client) {
-		/*
-		 * If we had focus or our last focus in this window,
-		 * forget about the focus.
-		 *
-		 * We will get an EnterNotify if there's another window
-		 * under the pointer so we can set the focus proper later.
-		 */
+	if (is_null(client))
+		return;
 
-		/* XXX
-		 * We should never ever have a client at this state, right?
-		 *
-		 * */
-		PDEBUG("XXX Should not happen\n");
-		PDEBUG("Destroy frame window if it still exists (0x%x)\n",
-				client->frame);
-		xcb_destroy_window(conn, client->frame);
-		remove_client(client);
-	}
+	/*
+	 * If we had focus or our last focus in this window,
+	 * forget about the focus.
+	 *
+	 * We will get an EnterNotify if there's another window
+	 * under the pointer so we can set the focus proper later.
+	 */
+
+	/* XXX
+	 * We should never ever have a client at this state, right?
+	 *
+	 * */
+	PDEBUG("XXX Should not happen\n");
+	PDEBUG("Destroy frame window if it still exists (0x%x)\n",
+			client->frame);
+	xcb_destroy_window(conn, client->frame);
+	remove_client(client);
 }
 
 #if 0

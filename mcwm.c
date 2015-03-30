@@ -2664,7 +2664,6 @@ void show(client_t *client)
 	xcb_map_window(conn, client->frame);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
-
 }
 
 void hide(client_t *client)
@@ -2730,7 +2729,6 @@ void attach_frame(client_t *client)
 	mask = XCB_CW_EVENT_MASK;
 	values[0] = DEFAULT_WINDOW_EVENTS;
 	xcb_change_window_attributes(conn, client->id, mask, values);
-
 }
 
 bool getpointer(xcb_drawable_t win, int16_t *x, int16_t *y)
@@ -2807,7 +2805,6 @@ void warp_focuswin(step_direction_t direction)
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
 				0, 0, 0, 0, pointx, pointy);
 	}
-
 }
 
 /*

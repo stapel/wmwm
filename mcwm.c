@@ -1056,7 +1056,6 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 	/* XXX check if monitor changed and we are checking this here for good */
 
 	const xcb_size_hints_t hints = client->hints;
-
 	/* Is the size within specified increments?
 	 *   width = base_width + (i × width_inc)
 	 *	 height = base_height + (j × height_inc)
@@ -1282,11 +1281,13 @@ void icccm_update_wm_normal_hints(client_t* client)
 		PDEBUG("base_size hints missing, using min_size\n");
 		hints.base_width = hints.min_width;
 		hints.base_height = hints.min_height;
+		hints.flags |= XCB_ICCCM_SIZE_HINT_BASE_SIZE;
 	} else if ((hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
 			&& (!(hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE))) {
 		PDEBUG("min_size hints missing, using base_size\n");
 		hints.min_width = hints.base_width;
 		hints.min_height = hints.base_height;
+		hints.flags |= XCB_ICCCM_SIZE_HINT_P_MIN_SIZE;
 	}
 
 	if (!(hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC)) {
@@ -1298,8 +1299,8 @@ void icccm_update_wm_normal_hints(client_t* client)
 			hints.width_inc = 1;
 		if (hints.height_inc < 1)
 			hints.height_inc = 1;
-		client->hints = hints;
 	}
+	client->hints = hints;
 }
 
 /*

@@ -2488,10 +2488,11 @@ void movestep(client_t *client, step_direction_t direction)
 {
 	int16_t start_x;
 	int16_t start_y;
-	xcb_rectangle_t geo = client->geometry;
 
 	if (is_null(client))
-		   return;
+		return;
+
+	xcb_rectangle_t geo = client->geometry;
 
 	if (client->fullscreen) {
 		/* We can't move a fully maximized window. */
@@ -2573,7 +2574,7 @@ void unmax(client_t *client)
 void toggle_fullscreen(client_t *client)
 {
 	if (is_null(client))
-		   return;
+	   return;
 
 	xcb_rectangle_t monitor;
 	get_monitor_geometry(client->monitor, &monitor);
@@ -2610,7 +2611,7 @@ void toggle_vertical(client_t *client)
 	xcb_rectangle_t monitor;
 
 	if (is_null(client))
-		   return;
+	   return;
 
 	get_monitor_geometry(client->monitor, &monitor);
 

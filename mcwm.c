@@ -38,6 +38,7 @@
  * hide() is now used generally, remove allow_icons stuff
  * unparent clients, remove atoms ... on quit
  * Destroy Window instead of xcb_kill_client() ?
+ * too many errors on closing client, don't set it to withdrawn
  */
 
 #include <stdlib.h>
@@ -978,6 +979,9 @@ uint32_t getcolor(const char *colstr)
 /* Reparent client window to root and set state ti WITHDRAWN */
 void withdraw_client(client_t* client)
 {
+	/* TODO: Make one withdraw and one to just kill it
+	 *
+	 * */
 	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
 	xcb_generic_error_t *error;
 	xcb_void_cookie_t vc;
@@ -3967,11 +3971,10 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 	 * under the pointer so we can set the focus proper later.
 	 */
 
-	/* XXX
-	 * We should never ever have a client at this state, right?
-	 *
-	 * */
-	PDEBUG("XXX Should not happen\n");
+	/*
+	 * (We should never ever have a client at this state, right?)
+	 * Can happen when is on another workspace (or just "hidden")
+	 */
 	PDEBUG("Destroy frame window if it still exists (0x%x)\n",
 			client->frame);
 	xcb_destroy_window(conn, client->frame);

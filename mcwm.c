@@ -214,6 +214,7 @@ typedef struct client {
 	xcb_size_hints_t hints;			/* WM_NORMAL_HINTS */
 //	xcb_icccm_wm_hints_t wm_hints;
 
+	bool take_focus;				/* allow taking focus */
 	bool allow_focus;				/* allow setting the input-focus to this window */
 	bool use_delete;				/* use delete_window client message to kill a window */
 	bool ewmh_state_set;			/* is _NET_WM_STATE set? */
@@ -355,6 +356,9 @@ struct icccm {
 	xcb_atom_t wm_change_state;
 	xcb_atom_t wm_state;
 	xcb_atom_t wm_protocols;		/* WM_PROTOCOLS.  */
+
+	xcb_atom_t wm_take_focus;
+
 } icccm;
 
 static xcb_atom_t ewmh_allowed_actions[2] = { XCB_ATOM_NONE, XCB_ATOM_NONE };
@@ -1341,13 +1345,19 @@ void icccm_update_wm_protocols(client_t* client)
 			icccm.wm_protocols);
 
 	client->use_delete = false;
+	client->take_focus = false;
 
 	if (xcb_icccm_get_wm_protocols_reply(conn, cookie, &protocols, NULL)) {
 		for (uint32_t i = 0; i < protocols.atoms_len; i++) {
 			if (protocols.atoms[i] == icccm.wm_delete_window) {
 				client->use_delete = true;
-				break;
+				continue;
 			}
+			if (protocols.atoms[i] == icccm.wm_take_focus) {
+				client->take_focus = true;
+				continue;
+			}
+
 		}
 		xcb_icccm_get_wm_protocols_reply_wipe(&protocols);
 	}
@@ -1394,6 +1404,7 @@ client_t *setup_win(xcb_window_t win)
 	client->fixed = false;
 	client->monitor = NULL;
 
+	client->take_focus = false;
 	client->allow_focus = true;
 	client->use_delete = false;
 
@@ -1553,6 +1564,7 @@ bool setup_keys(void)
 bool setup_icccm(void)
 {
 	icccm.wm_delete_window	= get_atom("WM_DELETE_WINDOW");
+	icccm.wm_take_focus		= get_atom("WM_TAKE_FOCUS");
 	icccm.wm_change_state	= get_atom("WM_CHANGE_STATE");
 	icccm.wm_state			= get_atom("WM_STATE");
 	icccm.wm_protocols		= get_atom("WM_PROTOCOLS");
@@ -2232,7 +2244,7 @@ void setunfocus()
 {
 	uint32_t values[1];
 
-	PDEBUG("setunfocus() focuswin = 0x%x\n", focuswin ? focuswin->frame : 0);
+	PDEBUG("setunfocus() focuswin = 0x%x\n", focuswin ? focuswin->id : 0);
 	if (is_null(focuswin))
 		return;
 
@@ -2819,6 +2831,31 @@ void warp_focuswin(step_direction_t direction)
 				0, 0, 0, 0, pointx, pointy);
 	}
 }
+
+
+
+#if 1
+/*
+ * Send message to ask the client that it may take focus now
+ */
+void send_take_focus(client_t* client)
+{
+	/* take_focus is not needed, we focus them */
+	if (client->take_focus) {
+		xcb_client_message_event_t ev = {
+			.response_type = XCB_CLIENT_MESSAGE,
+			.format = 32,
+			.sequence = 0,
+			.window = client->id,
+			.type = icccm.wm_protocols,
+			.data.data32 = { icccm.wm_take_focus, get_timestamp() }
+		};
+
+		xcb_send_event(conn, false, client->id,
+				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
+	}
+}
+#endif
 
 /*
  * End program
@@ -4297,5 +4334,7 @@ void set_input_focus(xcb_window_t win)
 	}
 	if (!is_null(client = findclientp(win))) {
 		setfocus(client);
+		if (client->allow_focus)
+			send_take_focus(client);
 	}
 }

@@ -2257,6 +2257,9 @@ client_t *findclientp(xcb_drawable_t win)
 		return NULL;
 	}
 
+	if (win == XCB_WINDOW_NONE)
+		return NULL;
+
 	if (focuswin) {
 		if (focuswin->id == win) {
 			PDEBUG("findclientp(): Win: 0x%x (focuswin->id)\n", win);
@@ -2297,6 +2300,9 @@ client_t *findclient(xcb_drawable_t win)
 		PDEBUG("findclient(): Root Window\n", win);
 		return NULL;
 	}
+
+	if (win == XCB_WINDOW_NONE)
+		return NULL;
 
 	if (focuswin && focuswin->id == win) {
 		PDEBUG("findclient(): Win: 0x%x (focuswin->id)\n", win);

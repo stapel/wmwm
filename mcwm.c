@@ -24,6 +24,7 @@
  */
 
 /* XXX THINGS TODO XXX
+!* colormaps
 !* rarely a segfault happens
  * LVDS is seen as clone of VGA-0? look at special-log
 !* Error handling

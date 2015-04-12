@@ -2254,50 +2254,34 @@ void setunfocus()
 	xcb_change_window_attributes(conn, focuswin->frame, XCB_CW_BORDER_PIXEL, values);
 }
 
+
 /*
  * Find client with client->id win or client->frame
  * in global window list.
  *
  * Returns client pointer or NULL if not found.
  */
-
 client_t *findclientp(xcb_drawable_t win)
 {
-	client_t *client;
-
-	if (win == screen->root) {
-		PDEBUG("findclientp(): Root Window\n", win);
-		return NULL;
-	}
-
 	if (win == XCB_WINDOW_NONE)
 		return NULL;
 
-	if (focuswin) {
-		if (focuswin->id == win) {
-			PDEBUG("findclientp(): Win: 0x%x (focuswin->id)\n", win);
-			return focuswin;
-		} else if (focuswin->frame == win) {
-			PDEBUG("findclientp(): Win: 0x%x (focuswin->frame)\n", win);
-			return focuswin;
-		}
-	}
+	if (win == screen->root)
+		return NULL;
+
+	if (focuswin && (focuswin->id == win || focuswin->frame == win))
+		return focuswin;
 
 	for (item_t *item = winlist; item; item = item->next) {
-		client = item->data;
+		client_t *client = item->data;
 		if (win == client->id) {
-			PDEBUG("findclientp(): Win: 0x%x (id)\n", win);
 			return client;
 		} else if (win == client->frame) {
-			PDEBUG("findclientp(): Win: 0x%x (frame)\n", win);
 			return client;
 		}
 	}
-
-	PDEBUG("findclientp(): unknown window 0x%x\n", win);
 	return NULL;
 }
-
 
 
 /*
@@ -2307,30 +2291,20 @@ client_t *findclientp(xcb_drawable_t win)
  */
 client_t *findclient(xcb_drawable_t win)
 {
-	client_t *client;
-
-	if (win == screen->root) {
-		PDEBUG("findclient(): Root Window\n", win);
-		return NULL;
-	}
-
 	if (win == XCB_WINDOW_NONE)
 		return NULL;
 
-	if (focuswin && focuswin->id == win) {
-		PDEBUG("findclient(): Win: 0x%x (focuswin->id)\n", win);
+	if (win == screen->root)
+		return NULL;
+
+	if (focuswin && focuswin->id == win)
 		return focuswin;
-	}
 
 	for (item_t *item = winlist; item; item = item->next) {
-		client = item->data;
-		if (win == client->id) {
-			PDEBUG("findclient(): Win: 0x%x (id)\n", win);
+		client_t *client = item->data;
+		if (win == client->id)
 			return client;
-		}
 	}
-
-	PDEBUG("findclient(): unknown window 0x%x\n", win);
 	return NULL;
 }
 
@@ -3621,10 +3595,6 @@ void handle_configure_notify(xcb_generic_event_t *ev)
 {
 	xcb_configure_notify_event_t *e
 		= (xcb_configure_notify_event_t *) ev;
-
-	PDEBUG("configure_notify: id = 0x%x (%d,%d %dx%d, OR: %d)\n",
-			e->window, e->x, e->y, e->width, e->height,
-			e->override_redirect);
 
 	if (e->window == screen->root) {
 		/*

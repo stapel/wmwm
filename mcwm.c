@@ -3707,30 +3707,30 @@ void handle_configure_request(xcb_generic_event_t *ev)
 			geometry.width = e->width;
 		if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
 			geometry.height = e->height;
+
+		/* Check if window fits on screen after resizing. */
+		update_client_geometry(client, &geometry);
 	}
 
-	uint32_t values[2];
-	uint16_t mask = e->value_mask &
-		(XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_SIBLING);
+	/* handle sibling/stacking order separatly (not that I want to do that) */
+	const uint16_t mask = e->value_mask &
+		(XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_STACK_MODE);
 
-	int i = 0;
-
-	if (mask & XCB_CONFIG_WINDOW_SIBLING) {
-		client_t *sibling = findclient(e->sibling);
-		PDEBUG("configure request : sibling 0x%x\n", e->sibling);
-		/* replace sibling with its frame */
-		values[i++] = sibling ? sibling->frame : e->sibling;
-	}
-
-	if (mask & XCB_CONFIG_WINDOW_STACK_MODE) {
-		PDEBUG("configure request : stack mode\n");
-		values[i++] = e->stack_mode;
-	}
-	if (mask)
+	if (mask) {
+		int i = 0;
+		uint32_t values[2];
+		if (mask & XCB_CONFIG_WINDOW_SIBLING) {
+			client_t *sibling = findclient(e->sibling);
+			PDEBUG("configure request : sibling 0x%x\n", e->sibling);
+			/* replace sibling with its frame if it's ours */
+			values[i++] = sibling ? sibling->frame : e->sibling;
+		}
+		if (mask & XCB_CONFIG_WINDOW_STACK_MODE) {
+			PDEBUG("configure request : stack mode\n");
+			values[i++] = e->stack_mode;
+		}
 		xcb_configure_window(conn, client->frame, mask, values);
-
-	/* Check if window fits on screen after resizing. */
-	update_client_geometry(client, &geometry);
+	}
 }
 
 static void handle_client_message(xcb_generic_event_t *ev)

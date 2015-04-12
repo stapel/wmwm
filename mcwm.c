@@ -215,6 +215,8 @@ typedef struct client {
 	xcb_size_hints_t hints;			/* WM_NORMAL_HINTS */
 //	xcb_icccm_wm_hints_t wm_hints;
 
+	xcb_colormap_t colormap;		/* current colormap */
+
 	bool take_focus;				/* allow taking focus */
 	bool allow_focus;				/* allow setting the input-focus to this window */
 	bool use_delete;				/* use delete_window client message to kill a window */
@@ -386,6 +388,7 @@ static void handle_mapping_notify(xcb_generic_event_t*);
 static void handle_unmap_notify(xcb_generic_event_t*);
 static void handle_destroy_notify(xcb_generic_event_t*);
 static void handle_property_notify(xcb_generic_event_t*);
+static void handle_colormap_notify(xcb_generic_event_t*);
 #if 0
 static void handle_focus_in(xcb_generic_event_t*);
 #endif
@@ -411,7 +414,8 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 #if 0
 	[XCB_FOCUS_IN]			= handle_focus_in,
 #endif
-	[XCB_PROPERTY_NOTIFY]	= handle_property_notify
+	[XCB_PROPERTY_NOTIFY]	= handle_property_notify,
+	[XCB_COLORMAP_NOTIFY]	= handle_colormap_notify
 };
 
 static uint32_t getcolor(const char *colstr);
@@ -1207,6 +1211,18 @@ void new_win(xcb_window_t win)
 		return;
 	}
 
+
+	xcb_get_window_attributes_reply_t *attr =
+		xcb_get_window_attributes_reply(conn,
+			xcb_get_window_attributes_unchecked(conn,
+				win),
+			NULL);
+
+	if (! is_null(attr)) {
+		client->colormap = attr->colormap;
+		destroy(attr);
+	}
+
 	/* Add this window to the current workspace. */
 	addtoworkspace(client, curws);
 
@@ -1410,6 +1426,8 @@ client_t *setup_win(xcb_window_t win)
 	client->allow_focus = true;
 	client->use_delete = false;
 
+	client->colormap = screen->default_colormap;
+
 	client->ewmh_state_set = false;
 
 	client->killed = 0;
@@ -1451,7 +1469,6 @@ client_t *setup_win(xcb_window_t win)
 	icccm_update_wm_hints(client);
 	icccm_update_wm_normal_hints(client);
 	icccm_update_wm_protocols(client);
-
 
 	ewmh_update_state(client);
 
@@ -1658,26 +1675,21 @@ bool setup_ewmh(void)
  */
 bool setup_screen(void)
 {
-	xcb_query_tree_reply_t *reply;
-	int i;
-	int len;
-	xcb_window_t *children;
-	xcb_get_window_attributes_reply_t *attr;
-	client_t *client;
-	uint32_t ws;
-
 	/* Get all children. */
-	reply = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->root), 0);
+	xcb_query_tree_reply_t *reply =
+		xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->root), 0);
+
 	if (is_null(reply)) {
 		return false;
 	}
 
-	len = xcb_query_tree_children_length(reply);
-	children = xcb_query_tree_children(reply);
+	int len = xcb_query_tree_children_length(reply);
+	xcb_window_t *children = xcb_query_tree_children(reply);
 
 	/* Set up all windows on this root. */
-	for (i = 0; i < len; i++) {
-		attr = xcb_get_window_attributes_reply(conn,
+	for (int i = 0; i < len; i++) {
+		xcb_get_window_attributes_reply_t *attr =
+			xcb_get_window_attributes_reply(conn,
 				xcb_get_window_attributes_unchecked(conn,
 					children[i]),
 				NULL);
@@ -1698,8 +1710,9 @@ bool setup_screen(void)
 		 *
 		 * Only handle visible windows.
 		 */
-		if (!attr->override_redirect
+		if (! attr->override_redirect
 				&& attr->map_state == XCB_MAP_STATE_VIEWABLE) {
+			client_t *client;
 			if (is_null(client = setup_win(children[i])))
 				continue;
 			/*
@@ -1725,12 +1738,14 @@ bool setup_screen(void)
 			/* Fit window on physical screen. */
 			update_client_geometry(client, NULL);
 
+			/* save individual colormap */
+			client->colormap = attr->colormap;
 			/*
 			 * Check if this window has a workspace set already as
 			 * a WM hint.
 			 *
 			 */
-			ws = ewmh_get_workspace(children[i]);
+			uint32_t ws = ewmh_get_workspace(children[i]);
 
 			if (ws == NET_WM_FIXED) {
 				/* Add to current workspace. */
@@ -2320,6 +2335,9 @@ void setfocus(client_t *client)
 	if (is_null(client)) {
 		PDEBUG("setfocus: client was NULL! \n");
 
+		/* install default colormap */
+		xcb_install_colormap(conn, screen->default_colormap);
+
 		focuswin = NULL;
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
 				XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
@@ -2342,6 +2360,7 @@ void setfocus(client_t *client)
 				client->id, get_timestamp());
 	}
 
+	/* send WM_TAKE_FOCUS if supported */
 	send_take_focus(client);
 
 	/* Set new border colour. */
@@ -2350,7 +2369,6 @@ void setfocus(client_t *client)
 	} else {
 		values[0] = conf.focuscol;
 	}
-
 	xcb_change_window_attributes(conn, client->frame, XCB_CW_BORDER_PIXEL, values);
 
 	/* Unset last focus. */
@@ -2358,6 +2376,10 @@ void setfocus(client_t *client)
 		setunfocus();
 	}
 
+	/* install clients colormap */
+	xcb_install_colormap(conn, client->colormap);
+
+	/* set active window ewmh-hint */
 	xcb_ewmh_set_active_window(ewmh, screen_number, client->id);
 
 	/* Remember the new window as the current focused window. */
@@ -3097,6 +3119,14 @@ void handle_property_notify(xcb_generic_event_t *ev)
 			} */
 			break;
 	}
+}
+
+void handle_colormap_notify(xcb_generic_event_t *ev)
+{
+	xcb_colormap_notify_event_t *e = (xcb_colormap_notify_event_t*) ev;
+
+	/* XXX only for clients ?*/
+	xcb_install_colormap(conn, e->colormap);
 }
 
 void handle_button_press(xcb_generic_event_t* ev)
@@ -4163,7 +4193,6 @@ int main(int argc, char **argv)
 			screen->width_in_pixels, screen->height_in_pixels, screen->root);
 
 	/* Get some colours. */
-	/* XXX change on colormap change */
 	conf.focuscol = getcolor(focuscol);
 	conf.unfocuscol = getcolor(unfocuscol);
 	conf.fixedcol = getcolor(fixedcol);

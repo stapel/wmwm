@@ -1384,7 +1384,7 @@ client_t *setup_win(xcb_window_t win)
 
 	/* Initialize client. */
 	client->id = win;
-	client->frame = 0;
+	client->frame = XCB_WINDOW_NONE;
 
 	client->usercoord = false;
 
@@ -4184,7 +4184,7 @@ int main(int argc, char **argv)
 	}
 
 	screen = iter.data;
-	if (!screen) {
+	if (is_null(screen)) {
 		fprintf(stderr, "mcwm: Can't get the current screen. Exiting.\n");
 		xcb_disconnect(conn);
 		exit(1);

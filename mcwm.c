@@ -440,6 +440,7 @@ static void set_shape(client_t* client);
 static void raise_client(client_t *client);
 static void raiseorlower(client_t *client);
 static void setfocus(client_t *client);
+static void send_take_focus(client_t *client);
 static void setunfocus();
 static void focusnext(void);
 static void finishtabbing(void);
@@ -2366,6 +2367,8 @@ void setfocus(client_t *client)
 				client->id, get_timestamp());
 	}
 
+	send_take_focus(client);
+
 	/* Set new border colour. */
 	if (client->fixed) {
 		values[0] = conf.fixedcol;
@@ -2832,14 +2835,12 @@ void warp_focuswin(step_direction_t direction)
 	}
 }
 
-
-
-#if 1
 /*
  * Send message to ask the client that it may take focus now
  */
 void send_take_focus(client_t* client)
 {
+	PDEBUG("send WM_TAKE_FOCUS to: 0x%x\n", client->id);
 	/* take_focus is not needed, we focus them */
 	if (client->take_focus) {
 		xcb_client_message_event_t ev = {
@@ -2855,7 +2856,6 @@ void send_take_focus(client_t* client)
 				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
 	}
 }
-#endif
 
 /*
  * End program
@@ -3017,10 +3017,10 @@ void events(void)
 
 		while ((ev = xcb_poll_for_event(conn))) {
 			const uint8_t response_type = XCB_EVENT_RESPONSE_TYPE(ev);
-//			PDEBUG("Event: %s (%d, handler: %d)\n",
-//					xcb_event_get_label(response_type),
-//					response_type,
-//					handler[response_type] ? 1 : 0);
+			PDEBUG("Event: %s (%d, handler: %d)\n",
+					xcb_event_get_label(response_type),
+					response_type,
+					handler[response_type] ? 1 : 0);
 
 			if (randrbase != -1 && response_type == (randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
 				PDEBUG("RANDR screen change notify. Checking outputs.\n");
@@ -3544,13 +3544,15 @@ void handle_key_release(xcb_generic_event_t *ev)
 void handle_enter_notify(xcb_generic_event_t *ev)
 {
 	xcb_enter_notify_event_t *e = (xcb_enter_notify_event_t *) ev;
-	client_t *client;
+	client_t *client = findclientp(e->event);
 
 	update_timestamp(e->time);
 
-	PDEBUG
-		("event: Enter notify eventwin 0x%x, child 0x%x, detail %d.\n",
+	PDEBUG ("event: Enter notify eventwin 0x%x, child 0x%x, detail %d.\n",
 		 e->event, e->child, e->detail);
+
+	if (is_null(client))
+		return;
 
 	/*
 	 * If this isn't a normal enter notify, don't bother.
@@ -3584,37 +3586,34 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	 * If we're entering the same window we focus now,
 	 * then don't bother focusing.
 	 */
-	if (is_null(focuswin) || (e->event != focuswin->id && e->event != focuswin->frame)) {
+	if (focuswin != client) {
 		/*
 		 * Otherwise, set focus to the window we just
 		 * entered if we can find it among the windows we
 		 * know about. If not, just keep focus in the old
 		 * window.
 		 */
-		client = findclientp(e->event);
-		if (client) {
-			if (! is_mode(mode_tab)) {
-				/*
-				 * We are focusing on a new window. Since
-				 * we're not currently tabbing around the
-				 * window ring, we need to update the
-				 * current workspace window list: Move
-				 * first the old focus to the head of the
-				 * list and then the new focus to the head
-				 * of the list.
-				 */
-				if (focuswin) {
-					movetohead(&wslist[curws],
-							focuswin->wsitem[curws]);
-					lastfocuswin = NULL;
-				}
-
+		if (! is_mode(mode_tab)) {
+			/*
+			 * We are focusing on a new window. Since
+			 * we're not currently tabbing around the
+			 * window ring, we need to update the
+			 * current workspace window list: Move
+			 * first the old focus to the head of the
+			 * list and then the new focus to the head
+			 * of the list.
+			 */
+			if (focuswin) {
 				movetohead(&wslist[curws],
-						client->wsitem[curws]);
-			} /* if not tabbing */
+						focuswin->wsitem[curws]);
+				lastfocuswin = NULL;
+			}
 
-			setfocus(client);
-		}
+			movetohead(&wslist[curws],
+					client->wsitem[curws]);
+		} /* if not tabbing */
+
+		setfocus(client);
 	}
 }
 
@@ -3622,6 +3621,10 @@ void handle_configure_notify(xcb_generic_event_t *ev)
 {
 	xcb_configure_notify_event_t *e
 		= (xcb_configure_notify_event_t *) ev;
+
+	PDEBUG("configure_notify: id = 0x%x (%d,%d %dx%d, OR: %d)\n",
+			e->window, e->x, e->y, e->width, e->height,
+			e->override_redirect);
 
 	if (e->window == screen->root) {
 		/*
@@ -3673,8 +3676,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		PDEBUG("We don't know about this window yet.\n");
 
 		/*
-		 * Unmapped window. Just pass all options except border
-		 * width.
+		 * Unmapped window. Just pass all options except border width.
 		 */
 		wc.x = e->x;
 		wc.y = e->y;
@@ -3695,87 +3697,37 @@ void handle_configure_request(xcb_generic_event_t *ev)
 	/* Find monitor position and size. */
 	get_monitor_geometry(is_null(client) ? NULL : client->monitor, &mon);
 
-
-#if 0
-	/*
-	 * We ignore moves the user haven't initiated, that is do
-	 * nothing on XCB_CONFIG_WINDOW_X and XCB_CONFIG_WINDOW_Y
-	 * ConfigureRequests.
-	 *
-	 * Code here if we ever change our minds or if you, dear user,
-	 * wants this functionality.
-	 *
-	 * Don't do that when maximized!
-	 */
-
-	if (e->value_mask & XCB_CONFIG_WINDOW_X) {
-		/* Don't move off the screen. */
-		if (e->x > 0) {
-			client->x = e->x;
-		}
-	}
-
-	if (e->value_mask & XCB_CONFIG_WINDOW_Y) {
-		/*
-		 * Don't move window if maximized. Don't move off the
-		 * screen.
-		 */
-		if (!client->vertmaxed && e->y > 0) {
-			client->y = e->y;
-		}
-	}
-#endif
-
 	/* Don't resize if maximized. */
 	if (! client->fullscreen) {
+		if (e->value_mask & XCB_CONFIG_WINDOW_X)
+			geometry.x = e->x;
+		if (e->value_mask & XCB_CONFIG_WINDOW_Y)
+			geometry.y = e->y;
 		if (e->value_mask & XCB_CONFIG_WINDOW_WIDTH)
 			geometry.width = e->width;
 		if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
 			geometry.height = e->height;
-
-		/* XXX ? am I allowing this, seriously that way */
-		/* XXX furthermore: I don't store borderwidth in client_t,
-		 * so I don't know when a client has border width */
-/*		if (e->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
-			PDEBUG("BORDER_WIDTH REQUEST: %d\n", e->border_width);
-			if (e->border_width == 0) {
-				setborders(client->frame, 0);
-				ewmh_frame_extents(client->id, 0);
-			} else {
-				setborders(client->frame, conf.borderwidth);
-				ewmh_frame_extents(client->id, conf.borderwidth);
-			}
-		} */
 	}
 
+	uint32_t values[2];
+	uint16_t mask = e->value_mask &
+		(XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_SIBLING);
 
-	/*
-	 * XXX Do we really need to pass on sibling and stack mode
-	 * configuration? Do we want to?, That way?
-	 */
-	if (e->value_mask & XCB_CONFIG_WINDOW_SIBLING) {
-		uint32_t values[1];
+	int i = 0;
+
+	if (mask & XCB_CONFIG_WINDOW_SIBLING) {
 		client_t *sibling = findclient(e->sibling);
 		PDEBUG("configure request : sibling 0x%x\n", e->sibling);
-
-		if (sibling) {
-			values[0] = sibling->frame;
-		} else {
-			values[0] = e->sibling;
-		}
-		xcb_configure_window(conn, client->frame,
-				XCB_CONFIG_WINDOW_SIBLING, values);
-
+		/* replace sibling with its frame */
+		values[i++] = sibling ? sibling->frame : e->sibling;
 	}
 
-	if (e->value_mask & XCB_CONFIG_WINDOW_STACK_MODE) {
-		uint32_t values[1];
-
+	if (mask & XCB_CONFIG_WINDOW_STACK_MODE) {
 		PDEBUG("configure request : stack mode\n");
-		values[0] = e->stack_mode;
-		xcb_configure_window(conn, client->frame,
-				XCB_CONFIG_WINDOW_STACK_MODE, values);
+		values[i++] = e->stack_mode;
 	}
+	if (mask)
+		xcb_configure_window(conn, client->frame, mask, values);
 
 	/* Check if window fits on screen after resizing. */
 	update_client_geometry(client, &geometry);
@@ -4334,7 +4286,5 @@ void set_input_focus(xcb_window_t win)
 	}
 	if (!is_null(client = findclientp(win))) {
 		setfocus(client);
-		if (client->allow_focus)
-			send_take_focus(client);
 	}
 }

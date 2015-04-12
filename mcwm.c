@@ -25,6 +25,7 @@
 
 /* XXX THINGS TODO XXX
 !* colormaps
+!* MWM hints
 !* rarely a segfault happens
  * LVDS is seen as clone of VGA-0? look at special-log
 !* Error handling
@@ -4162,6 +4163,7 @@ int main(int argc, char **argv)
 			screen->width_in_pixels, screen->height_in_pixels, screen->root);
 
 	/* Get some colours. */
+	/* XXX change on colormap change */
 	conf.focuscol = getcolor(focuscol);
 	conf.unfocuscol = getcolor(unfocuscol);
 	conf.fixedcol = getcolor(fixedcol);

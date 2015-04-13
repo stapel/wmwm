@@ -26,21 +26,21 @@
 /* XXX THINGS TODO XXX
 !* colormaps
 !* MWM hints
-!* rarely a segfault happens
- * LVDS is seen as clone of VGA-0? look at special-log
+!* focus still can be lost (e.g. wine)
+   wine e.g. has allow_focus == false! so no falling back if killed ? XXX
 !* Error handling
+!* maximize and fitonscreen share similar code
+!* too many errors on closing client, don't set it to withdrawn
+?* LVDS is seen as clone of VGA-0? look at special-log
  * key handling, automate a little further, it looks really ugly
  * maximize to v/h not fullscreen - only use fullscreen via hint from app
  * register events for client? (so keep client struct for window?)
  * synthetic unmap notify handling
  * initial atoms (esp. _NET_WM_STATE_FULLSCREEN etc.)
-!* maximize and fitonscreen share similar code
  * encapsulate geometry?
-?* put resizing fixups (local vars) into a seperate function
  * hide() is now used generally, remove allow_icons stuff
  * unparent clients, remove atoms ... on quit
  * Destroy Window instead of xcb_kill_client() ?
- * too many errors on closing client, don't set it to withdrawn
  * WM_COLORMAP_WINDOWS ?
  */
 
@@ -482,7 +482,6 @@ static xcb_keycode_t keysymtokeycode(xcb_keysym_t keysym,
 static bool setup_keys(void);
 static bool setup_screen(void);
 static bool setup_ewmh(void);
-static bool setup_icccm(void);
 static int setup_randr(void);
 static void getrandr(void);
 static void getoutputs(xcb_randr_output_t * outputs, int len,
@@ -1558,14 +1557,17 @@ bool setup_keys(void)
 				keys[i].keycode, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
 
 		/* also grab with extended modmask */
-		if (i >= KEY_H && i <= KEY_L) {
-			xcb_grab_key(conn, 1, screen->root,
-					MODKEY | CONTROLMOD | SHIFTMOD,
-					keys[i].keycode, XCB_GRAB_MODE_ASYNC,
-					XCB_GRAB_MODE_ASYNC);
+		switch (i) {
+			case KEY_H:
+			case KEY_J:
+			case KEY_K:
+			case KEY_L:
+				xcb_grab_key(conn, 1, screen->root,
+						MODKEY | CONTROLMOD | SHIFTMOD,
+						keys[i].keycode, XCB_GRAB_MODE_ASYNC,
+						XCB_GRAB_MODE_ASYNC);
 		}
-
-	}							/* for */
+	} /* for */
 
 	/* Need this to take effect NOW! */
 	xcb_flush(conn);
@@ -1579,36 +1581,26 @@ bool setup_keys(void)
 
 
 /*
- * Get ICCCM atoms
+ * Initialize EWMH stuff
  */
-bool setup_icccm(void)
+bool setup_ewmh(void)
 {
+ 	/* get ICCCM atoms */
 	icccm.wm_delete_window	= get_atom("WM_DELETE_WINDOW");
 	icccm.wm_take_focus		= get_atom("WM_TAKE_FOCUS");
 	icccm.wm_change_state	= get_atom("WM_CHANGE_STATE");
 	icccm.wm_state			= get_atom("WM_STATE");
 	icccm.wm_protocols		= get_atom("WM_PROTOCOLS");
-	return true;
-}
 
-/*
- * Initialize EWMH stuff
- */
-bool setup_ewmh(void)
-{
 
-	/* Get some atoms. */
-
+	/* establish ewmh connection (-lxcb_ewmh) */
 	ewmh = calloc(1, sizeof(xcb_ewmh_connection_t));
-	if (! ewmh) {
+	if (! ewmh)
 		return false;
-	}
 
 	xcb_intern_atom_cookie_t *cookies = xcb_ewmh_init_atoms(conn, ewmh);
-
-	if (is_null(cookies)) {
+	if (is_null(cookies))
 		return false;
-	}
 
 	if (! xcb_ewmh_init_atoms_replies(ewmh, cookies, NULL)) {
 		destroy(ewmh);
@@ -2341,7 +2333,7 @@ void setfocus(client_t *client)
 
 		focuswin = NULL;
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
-				XCB_INPUT_FOCUS_POINTER_ROOT, XCB_CURRENT_TIME);
+				XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
 
 		return;
@@ -2884,7 +2876,6 @@ void deletewin(client_t* client)
 		PDEBUG("deletewin: 0x%x (kill_client)\n", client->id);
 		xcb_kill_client(conn, client->id);
 	}
-
 }
 
 void prevscreen(void)
@@ -3880,14 +3871,16 @@ void handle_mapping_notify(xcb_generic_event_t *ev)
 	 * We're only interested in keys and modifiers, not
 	 * pointer mappings, for instance.
 	 */
+	PDEBUG("mapping_notify: req: %d count: %d first: %d\n", e->request,
+			e->count, e->first_keycode);
 	if (e->request != XCB_MAPPING_MODIFIER
 			&& e->request != XCB_MAPPING_KEYBOARD) {
 		return;
 	}
 
 	/* Forget old key bindings. */
-	xcb_ungrab_key(conn, XCB_GRAB_ANY, screen->root,
-			XCB_MOD_MASK_ANY);
+	xcb_ungrab_key(conn, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
+
 	/* Use the new ones. */
 	if (! setup_keys()) {
 		fprintf(stderr, "mcwm: Couldn't set up keycodes. Exiting.");
@@ -4198,13 +4191,7 @@ int main(int argc, char **argv)
 	conf.unfocuscol = getcolor(unfocuscol);
 	conf.fixedcol = getcolor(fixedcol);
 
-	/* setup ICCCM */
-	if (! setup_icccm()) {
-		fprintf(stderr, "mcwm: Failed to initialize ICCCM atoms. Exiting.\n");
-		cleanup(1);
-	}
-
-	/* setup EWMH-lib */
+	/* setup EWMH */
 	if (! setup_ewmh()) {
 		fprintf(stderr, "mcwm: Failed to initialize xcb-ewmh. Exiting.\n");
 		cleanup(1);

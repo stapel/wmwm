@@ -41,6 +41,7 @@
  * unparent clients, remove atoms ... on quit
  * Destroy Window instead of xcb_kill_client() ?
  * too many errors on closing client, don't set it to withdrawn
+ * WM_COLORMAP_WINDOWS ?
  */
 
 #include <stdlib.h>

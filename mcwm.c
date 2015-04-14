@@ -446,7 +446,6 @@ static void set_shape(client_t* client);
 static void raise_client(client_t *client);
 static void raiseorlower(client_t *client);
 static void setfocus(client_t *client);
-static void send_take_focus(client_t *client);
 static void setunfocus();
 static void focusnext(void);
 static void finishtabbing(void);
@@ -461,9 +460,7 @@ static void hide(client_t *client);
 static void remove_client(client_t *client);
 static void show(client_t *client);
 
-
-
-
+void send_event(xcb_window_t window, xcb_atom_t atom);
 
 static void set_input_focus(xcb_window_t win);
 static void setborders(xcb_drawable_t win, int width);
@@ -1347,8 +1344,11 @@ void icccm_update_wm_hints(client_t* client)
 		return;
 	}
 
+	/* allow setting intput focus */
 	if (wm_hints.flags & XCB_ICCCM_WM_HINT_INPUT)
 		client->allow_focus = !!(wm_hints.input);
+	else
+		client->allow_focus = true;
 }
 
 /*
@@ -2347,14 +2347,18 @@ void setfocus(client_t *client)
 		return;
 	}
 
+	/* set focus if allowed or
+	 * send WM_TAKE_FOCUS
+	 */
 	if (client->allow_focus) {
 		PDEBUG("xcb_set_input_focus: 0x%x\n", client->id);
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
 				client->id, get_timestamp());
+	} else if (client->take_focus) {
+		send_event(client->id, icccm.wm_take_focus);
 	}
 
 	/* send WM_TAKE_FOCUS if supported */
-	send_take_focus(client);
 
 	/* Set new border colour. */
 	if (client->fixed) {
@@ -2825,31 +2829,21 @@ void warp_focuswin(step_direction_t direction)
 	}
 }
 
-/*
- * Send message to ask the client that it may take focus now
- */
-void send_take_focus(client_t* client)
+void send_event(xcb_window_t window, xcb_atom_t atom)
 {
-	PDEBUG("send WM_TAKE_FOCUS to: 0x%x\n", client->id);
-	/* take_focus is not needed, we focus them */
-	if (client->take_focus) {
-		xcb_client_message_event_t ev = {
-			.response_type = XCB_CLIENT_MESSAGE,
-			.format = 32,
-			.sequence = 0,
-			.window = client->id,
-			.type = icccm.wm_protocols,
-			.data.data32 = { icccm.wm_take_focus, get_timestamp() }
-		};
+	PDEBUG("xcb_send_event(%s) to 0x%x\n", get_atomname(atom), window);
 
-		xcb_send_event(conn, false, client->id,
-				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
-	}
+	xcb_client_message_event_t ev = {
+		.response_type = XCB_CLIENT_MESSAGE,
+		.format = 32,
+		.sequence = 0,
+		.window = window,
+		.type = icccm.wm_protocols, // ewmh.WM_PROTOCOLS available
+		.data.data32 = {atom, get_timestamp()}
+	};
+	xcb_send_event(conn, false, window,
+			XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
 }
-
-/*
- * End program
- */
 
 void deletewin(client_t* client)
 {
@@ -2858,19 +2852,9 @@ void deletewin(client_t* client)
 
 	if (client->use_delete && client->killed++ < 3) {
 		/* WM_DELETE_WINDOW message */
-		xcb_client_message_event_t ev = {
-			.response_type = XCB_CLIENT_MESSAGE,
-			.format = 32,
-			.sequence = 0,
-			.window = client->id,
-			.type = icccm.wm_protocols, // ewmh.WM_PROTOCOLS available
-			.data.data32 = {icccm.wm_delete_window, get_timestamp()}
-		};
-
+		send_event(client->id, icccm.wm_delete_window);
 		PDEBUG("deletewin: 0x%x (send_event #%d)\n", client->id,
 				client->killed);
-		xcb_send_event(conn, false, client->id,
-				XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
 	} else {
 		/* WM_DELETE_WINDOW either NA or failed 3 times  */
 		PDEBUG("deletewin: 0x%x (kill_client)\n", client->id);
@@ -3118,6 +3102,8 @@ void handle_colormap_notify(xcb_generic_event_t *ev)
 	xcb_colormap_notify_event_t *e = (xcb_colormap_notify_event_t*) ev;
 
 	/* XXX only for clients ?*/
+	/* is it neccessary at all?, isn't this just just
+	 * a notification that it's installed allready ? */
 	xcb_install_colormap(conn, e->colormap);
 }
 
@@ -4164,6 +4150,7 @@ int main(int argc, char **argv)
 	conn = xcb_connect(NULL, &screen_number);
 	if (xcb_connection_has_error(conn)) {
 		perror("xcb_connect");
+		xcb_disconnect(conn);
 		exit(1);
 	}
 

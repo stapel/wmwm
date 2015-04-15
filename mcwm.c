@@ -28,6 +28,8 @@
 !* MWM hints
 !* focus still can be lost (e.g. wine)
    wine e.g. has allow_focus == false! so no falling back if killed ? XXX
+   THIS HAPPENS WHEN THE CLIENT SETS FOCUS BY ITSELF AND
+   USES revert_to = parent, this in turn reverts to 0,0 if no parent
 !* Error handling
 !* maximize and fitonscreen share similar code
 !* too many errors on closing client, don't set it to withdrawn
@@ -3101,10 +3103,9 @@ void handle_colormap_notify(xcb_generic_event_t *ev)
 {
 	xcb_colormap_notify_event_t *e = (xcb_colormap_notify_event_t*) ev;
 
-	/* XXX only for clients ?*/
-	/* is it neccessary at all?, isn't this just just
-	 * a notification that it's installed allready ? */
-	xcb_install_colormap(conn, e->colormap);
+	client_t *c = findclient(e->window)
+	if (c && e->_new)
+		xcb_install_colormap(conn, e->colormap);
 }
 
 void handle_button_press(xcb_generic_event_t* ev)

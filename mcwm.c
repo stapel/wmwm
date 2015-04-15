@@ -3103,7 +3103,7 @@ void handle_colormap_notify(xcb_generic_event_t *ev)
 {
 	xcb_colormap_notify_event_t *e = (xcb_colormap_notify_event_t*) ev;
 
-	client_t *c = find_client(e->window)
+	client_t *c = find_client(e->window);
 	if (c && e->_new)
 		xcb_install_colormap(conn, e->colormap);
 }

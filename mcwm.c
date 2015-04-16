@@ -2349,7 +2349,7 @@ void set_focus(client_t *client)
 		return;
 	}
 
-	/* set focus if allowed or
+	/* set focus if allowed xor
 	 * send WM_TAKE_FOCUS
 	 */
 	if (client->allow_focus) {
@@ -2359,8 +2359,6 @@ void set_focus(client_t *client)
 	} else if (client->take_focus) {
 		send_event(client->id, icccm.wm_take_focus);
 	}
-
-	/* send WM_TAKE_FOCUS if supported */
 
 	/* Set new border colour. */
 	if (client->fixed) {

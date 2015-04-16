@@ -434,7 +434,7 @@ static void ewmh_update_client_list();
 static void ewmh_frame_extents(xcb_window_t win, int width);
 
 
-static void resizestep(client_t *client, step_direction_t direction);
+static void resize_step(client_t *client, step_direction_t direction);
 static void mouse_move(client_t *client, int rel_x, int rel_y);
 static void mouse_resize(client_t *client, int rel_x, int rel_y);
 static void move_step(client_t *client, step_direction_t direction);
@@ -2423,7 +2423,7 @@ int start(char *program)
 /*
  * Resize window client in direction direction.
  */
-void resizestep(client_t *client, step_direction_t direction)
+void resize_step(client_t *client, step_direction_t direction)
 {
 	int step_x = MOVE_STEP;
 	int step_y = MOVE_STEP;
@@ -3338,19 +3338,19 @@ void handle_key_press(xcb_generic_event_t *ev)
 			/* META+CTRL+SHIFT */
 			switch (key) {
 				case KEY_H:		/* left */
-					resizestep(focuswin, step_left);
+					resize_step(focuswin, step_left);
 					break;
 
 				case KEY_J:		/* down */
-					resizestep(focuswin, step_down);
+					resize_step(focuswin, step_down);
 					break;
 
 				case KEY_K:		/* up */
-					resizestep(focuswin, step_up);
+					resize_step(focuswin, step_up);
 					break;
 
 				case KEY_L:		/* right */
-					resizestep(focuswin, step_right);
+					resize_step(focuswin, step_right);
 					break;
 
 				default:

@@ -24,12 +24,14 @@
  */
 
 /* XXX THINGS TODO XXX
+!* XXX next todo: withdrawn, iconic, remove_client etc. cleanup
 !* colormaps
 !* MWM hints
 !* focus still can be lost (e.g. wine)
    wine e.g. has allow_focus == false! so no falling back if killed ? XXX
    THIS HAPPENS WHEN THE CLIENT SETS FOCUS BY ITSELF AND
    USES revert_to = parent, this in turn reverts to 0,0 if no parent
+ * function
 !* Error handling
 !* maximize and fitonscreen share similar code
 !* too many errors on closing client, don't set it to withdrawn
@@ -3882,6 +3884,9 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 		return;
 	}
 
+	/* see ICCCM 4.1.4. Changing Window State
+	 * When changing the state of the window to Withdrawn, the client must (in addition to unmapping the window) send a synthetic UnmapNotify event by using a SendEvent request with the following arguments
+	 */
 	if (XCB_EVENT_SENT(ev)) {
 		// synthetic event, indicates wanting to withdrawn state
 		PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);

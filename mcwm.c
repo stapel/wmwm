@@ -648,12 +648,6 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
  */
 void cleanup(int code)
 {
-	for (item_t *item = winlist; item; item = item->next) {
-		client_t *client = item->data;
-		if (client)
-			remove_client(client);
-	}
-
 	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
 			XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
 
@@ -773,7 +767,7 @@ void set_workspace(client_t *client, uint32_t ws)
 {
 	item_t *item;
 
-	PDEBUG("set_workspace: 0x%x to WS: %d\n", client->id, ws);
+	PDEBUG("set_workspace: 0x%x to WS: %u\n", client->id, ws);
 	if (ws == WORKSPACE_FIXED) {
 		/* add to all workspaces not currently on */
 		for (uint32_t i = 0; i < WORKSPACES; i++) {
@@ -2643,6 +2637,8 @@ void remove_client(client_t *client)
 	/* check if the window is allready gone */
 	if (! error || error->error_code != XCB_WINDOW)
 		xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
+	if (error)
+		destroy(error);
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);

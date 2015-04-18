@@ -36,6 +36,9 @@
 !* maximize and fitonscreen share similar code
 !* too many errors on closing client, don't set it to withdrawn
 ?* LVDS is seen as clone of VGA-0? look at special-log
+!* make checks if hints actually exist (not to use inc_width etc...)
+ * NET_WM_STATE client message
+ * configurewin (don't like that somehow)
  * key handling, automate a little further, it looks really ugly
  * maximize to v/h not fullscreen - only use fullscreen via hint from app
  * register events for client? (so keep client struct for window?)
@@ -268,8 +271,8 @@ int shapebase;					/* Beginning of SHAPE extension events. */
 
 uint32_t curws = 0;				/* Current workspace. */
 
-uint16_t mode_x = 0;
-uint16_t mode_y = 0;
+int16_t mode_x = 0;
+int16_t mode_y = 0;
 
 client_t *focuswin = NULL;		/* Current focus window. */
 client_t *lastfocuswin = NULL;	/* Last focused window. NOTE! Only
@@ -973,56 +976,6 @@ uint32_t getcolor(const char *colstr)
 	return color;
 }
 
-/* Reparent client window to root and set state ti WITHDRAWN */
-void withdraw_client(client_t* client)
-{
-	/* TODO: Make one withdraw and one to just kill it
-	 *
-	 * */
-	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
-	xcb_generic_error_t *error;
-	xcb_void_cookie_t vc;
-
-	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
-	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
-	error = xcb_request_check(conn, vc);
-	if (! error) {
-		PDEBUG(" and set window to withdrawn state\n");
-		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
-			icccm.wm_state, icccm.wm_state, 32, 2, data);
-	} else {
-		PDEBUG("Could not reparent 0x%x back to root\n", client->id);
-		print_x_error(error);
-		destroy(error);
-	}
-	/* XXX check out the error-code */
-	xcb_destroy_window(conn, client->frame);
-}
-
-/* Forget everything about client client. */
-void remove_client(client_t *client)
-{
-	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
-
-	if (focuswin == client) focuswin = NULL;
-	if (lastfocuswin == client) lastfocuswin = NULL;
-
-	/*
-	 * Delete this client from whatever workspace lists it belongs to.
-	 * Note that it's OK to be on several workspaces at once even if
-	 * you're not fixed.
-	 */
-	for (uint32_t ws = 0; ws < WORKSPACES; ws++) {
-		if (client->wsitem[ws]) {
-			del_from_ws(client, ws);
-		}
-	}
-	xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
-
-	/* Remove from global window list. */
-	freeitem(&winlist, NULL, client->winitem);
-	ewmh_update_client_list();
-}
 
 int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 {
@@ -1266,6 +1219,7 @@ void icccm_update_wm_normal_hints(client_t* client)
 
 	xcb_size_hints_t hints;
 
+	/* XXX check for client->hints validity */
 	if (! xcb_icccm_get_wm_normal_hints_reply
 			(conn, xcb_icccm_get_wm_normal_hints_unchecked(conn, client->id),
 			 &hints, NULL)) {
@@ -2430,7 +2384,8 @@ void resize_step(client_t *client, step_direction_t direction)
 			break;
 	}							/* switch direction */
 
-	update_client_geometry(client, &geometry);
+	if (! update_client_geometry(client, &geometry))
+		return;
 
 	/* If this window was vertically maximized, remember that it isn't now. */
 	if (client->vertmaxed) {
@@ -2457,8 +2412,10 @@ void mouse_resize(client_t *client, int rel_x, int rel_y)
 {
 	xcb_rectangle_t geo = client->geometry;
 
-	geo.width = abs(rel_x - geo.x);
-	geo.height = abs(rel_y - geo.y);
+	if (rel_x > geo.x)
+		geo.width = rel_x - geo.x;
+	if (rel_y > geo.y)
+		geo.height = rel_y - geo.y;
 
 	if (! update_client_geometry(client, &geo))
 		return; // nothing changed
@@ -2491,6 +2448,7 @@ void move_step(client_t *client, step_direction_t direction)
 	}
 
 	raise_client(client);
+
 	switch (direction) {
 		case step_left:
 			geo.x -= MOVE_STEP;
@@ -2509,7 +2467,8 @@ void move_step(client_t *client, step_direction_t direction)
 			break;
 	}							/* switch direction */
 
-	update_client_geometry(client, &geo);
+	if (! update_client_geometry(client, &geo))
+		return;
 
 	/*
 	 * If the pointer was inside the window to begin with, move
@@ -2623,7 +2582,8 @@ void toggle_vertical(client_t *client)
 	client->vertmaxed = true;
 
 	/* Move to top of screen and resize. */
-	update_client_geometry(client, &monitor);
+	if (! update_client_geometry(client, &monitor))
+		return;
 
 	/* Remember that this client is vertically maximized. */
 	ewmh_update_state(client);
@@ -2643,6 +2603,7 @@ void set_hidden_events(client_t *client)
 	xcb_change_window_attributes(conn, client->frame, mask, values);
 }
 
+/* show client */
 void show(client_t *client)
 {
 	long data[] = { XCB_ICCCM_WM_STATE_NORMAL, XCB_NONE };
@@ -2654,6 +2615,7 @@ void show(client_t *client)
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
 }
 
+/* send window into iconic mode and hide */
 void hide(client_t *client)
 {
 	long data[] = { XCB_ICCCM_WM_STATE_ICONIC, XCB_NONE };
@@ -2676,6 +2638,57 @@ void hide(client_t *client)
 	xcb_unmap_window(conn, client->id);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
+}
+
+/* Reparent client window to root and set state ti WITHDRAWN */
+void withdraw_client(client_t* client)
+{
+	/* TODO: Make one withdraw and one to just kill it
+	 *
+	 * */
+	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
+	xcb_generic_error_t *error;
+	xcb_void_cookie_t vc;
+
+	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
+	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
+	error = xcb_request_check(conn, vc);
+	if (! error) {
+		PDEBUG(" and set window to withdrawn state\n");
+		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
+			icccm.wm_state, icccm.wm_state, 32, 2, data);
+	} else {
+		PDEBUG("Could not reparent 0x%x back to root\n", client->id);
+		print_x_error(error);
+		destroy(error);
+	}
+	/* XXX check out the error-code */
+	xcb_destroy_window(conn, client->frame);
+}
+
+/* Forget everything about client client. */
+void remove_client(client_t *client)
+{
+	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
+
+	if (focuswin == client) focuswin = NULL;
+	if (lastfocuswin == client) lastfocuswin = NULL;
+
+	/*
+	 * Delete this client from whatever workspace lists it belongs to.
+	 * Note that it's OK to be on several workspaces at once even if
+	 * you're not fixed.
+	 */
+	for (uint32_t ws = 0; ws < WORKSPACES; ws++) {
+		if (client->wsitem[ws]) {
+			del_from_ws(client, ws);
+		}
+	}
+	xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
+
+	/* Remove from global window list. */
+	freeitem(&winlist, NULL, client->winitem);
+	ewmh_update_client_list();
 }
 
 /*
@@ -2985,8 +2998,6 @@ void events(void)
 			destroy(ev);
 		}
 
-		xcb_flush(conn);
-
 		/*
 		 * Check if we have an unrecoverable connection error,
 		 * like a disconnected X server.
@@ -2994,6 +3005,8 @@ void events(void)
 		if (xcb_connection_has_error(conn)) {
 			cleanup(1);
 		}
+
+		xcb_flush(conn);
 	}
 }
 
@@ -3086,9 +3099,14 @@ void handle_button_press(xcb_generic_event_t* ev)
 //			e->detail, e->event, e->child, e->event_x,
 //			e->event_y);
 
-	if (0 == e->child) {
-		/* Mouse click on root window. Start programs? */
+	/* check if the button is awaited */
+	switch (e->detail) {
+		case 1: case 2: case 3: break;
+		default: return;
+	}
 
+	if (e->child == XCB_WINDOW_NONE) {
+		/* Mouse click on root window. Start programs? */
 		switch (e->detail) {
 			case 1:	/* Mouse button one. */
 				start(MOUSE1);
@@ -3121,64 +3139,62 @@ void handle_button_press(xcb_generic_event_t* ev)
 	 * If middle button was pressed, raise window or lower
 	 * it if it was already on top.
 	 */
-	if (2 == e->detail) {
+	if (e->detail == 2) {
 		raise_or_lower_client(focuswin);
-	} else if (! focuswin->fullscreen) {
-		int16_t pointx;
-		int16_t pointy;
+		return;
+	}
 
-		/* We're moving or resizing, ignore when maxed. */
+	/* We're moving or resizing, ignore when maxed. */
+	if (focuswin->fullscreen)
+		return;
 
-		/*
-		 * Get and save pointer position inside the window
-		 * so we can go back to it when we're done moving
-		 * or resizing.
-		 */
-		if (!get_pointer(focuswin->frame, &pointx, &pointy)) {
-			return;
-		}
+	/*
+	 * Get and save pointer position inside the window
+	 * so we can go back to it when we're done moving
+	 * or resizing.
+	 */
 
-		mode_x = pointx;
-		mode_y = pointy;
+	if (! get_pointer(focuswin->frame, &mode_x, &mode_y)) {
+		PDEBUG("Could not get pointer?\n");
+		return;
+	}
 
-		/* Raise window. */
-		raise_client(focuswin);
+	raise_client(focuswin);
 
-		/* Mouse button 1 was pressed. */
-		if (1 == e->detail) {
+	switch (e->detail) {
+		case 1: /* left button: move */
 			set_mode(mode_move);
-		} else {
-			/* Mouse button 3 was pressed. */
-
+			break;
+		case 3: /* right button: resize */
 			set_mode(mode_resize);
-			/* Warp pointer to lower right. */
+			/* Warp pointer to lower right. XXX gravity ? */
 			xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame, 0,
 					0, 0, 0, focuswin->geometry.width,
 					focuswin->geometry.height);
-			xcb_flush(conn);
-		}
-
-		/*
-		 * Take control of the pointer in the root window
-		 * and confine it to root.
-		 *
-		 * Give us events when the key is released or if
-		 * any motion occurs with the key held down.
-		 *
-		 * Keep updating everything else.
-		 *
-		 * Don't use any new cursor.
-		 */
-		xcb_grab_pointer(conn, 0, screen->root,
-				XCB_EVENT_MASK_BUTTON_RELEASE
-				| XCB_EVENT_MASK_BUTTON_MOTION
-				| XCB_EVENT_MASK_POINTER_MOTION_HINT,
-				XCB_GRAB_MODE_ASYNC,
-				XCB_GRAB_MODE_ASYNC,
-				screen->root, XCB_NONE, get_timestamp());
-
-		PDEBUG("mode now : %d\n", get_mode());
+			break;
 	}
+
+	/*
+	 * Take control of the pointer in the root window
+	 * and confine it to root.
+	 *
+	 * Give us events when the key is released or if
+	 * any motion occurs with the key held down.
+	 *
+	 * Keep updating everything else.
+	 *
+	 * Don't use any new cursor.
+	 */
+	xcb_grab_pointer(conn, 0, screen->root,
+			XCB_EVENT_MASK_BUTTON_RELEASE
+			| XCB_EVENT_MASK_BUTTON_MOTION
+			| XCB_EVENT_MASK_POINTER_MOTION_HINT,
+			XCB_GRAB_MODE_ASYNC,
+			XCB_GRAB_MODE_ASYNC,
+			screen->root, XCB_NONE, get_timestamp());
+	xcb_flush(conn);
+
+	PDEBUG("mode now : %d\n", get_mode());
 }
 
 void handle_motion_notify(xcb_generic_event_t *ev) //wunused
@@ -3699,8 +3715,8 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	/* We don't act on any other client messages from unhandled windows */
 	if (! client) {
-		PDEBUG("client_message: unknown window (0x%x), type: %d!\n",
-				e->window, e->type);
+		PDEBUG("client_message: unknown window (0x%x), type: %s (%d)!\n",
+				e->window, get_atomname(e->type), e->type);
 		return;
 	}
 

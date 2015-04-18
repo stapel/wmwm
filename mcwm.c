@@ -2764,7 +2764,11 @@ void warp_focuswin(step_direction_t direction)
 
 void send_event(xcb_window_t window, xcb_atom_t atom)
 {
-	PDEBUG("xcb_send_event(%s) to 0x%x\n", get_atomname(atom), window);
+#if DEBUG
+	char* aname = get_atomname(atom);
+	PDEBUG("xcb_send_event(%s) to 0x%x\n", aname, window);
+	destroy(aname);
+#endif
 
 	xcb_client_message_event_t ev = {
 		.response_type = XCB_CLIENT_MESSAGE,
@@ -3683,8 +3687,12 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	/* We don't act on any other client messages from unhandled windows */
 	if (! client) {
+#if DEBUG
+		char* aname = get_atomname(e->type);
 		PDEBUG("client_message: unknown window (0x%x), type: %s (%d)!\n",
-				e->window, get_atomname(e->type), e->type);
+				e->window, aname, e->type);
+		destroy(aname);
+#endif
 		return;
 	}
 

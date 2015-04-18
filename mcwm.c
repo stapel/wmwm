@@ -24,7 +24,7 @@
  */
 
 /* XXX THINGS TODO XXX
-!* MWM hints
+ * MWM hints
 !* focus still can be lost (e.g. wine)
    wine e.g. has allow_focus == false! so no falling back if killed ? XXX
    THIS HAPPENS WHEN THE CLIENT SETS FOCUS BY ITSELF AND
@@ -144,14 +144,7 @@ typedef enum {
 #define HIDDEN_FRAME_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
 
 /* What we listen to on the root window */
-#define DEFAULT_ROOT_WINDOW_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
-
-
-
-static inline bool is_null(const void const *ptr)
-{
-	return (ptr == (void*)NULL);
-}
+#define DEFAULT_ROOT_WINDOW_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_ENTER_WINDOW )
 
 
 /* Types. */
@@ -434,7 +427,7 @@ static void mouse_resize(client_t *client, int rel_x, int rel_y);
 static void move_step(client_t *client, step_direction_t direction);
 
 static void set_workspace(client_t *client, uint32_t ws);
-static void change_ws(uint32_t ws);
+static void change_workspace(uint32_t ws);
 
 static void fix_client(client_t *client);
 static void set_shape(client_t *client);
@@ -567,7 +560,7 @@ void finish_tab(void)
 	PDEBUG("Finish tabbing!\n");
 	set_mode(mode_nothing);
 
-	if (!is_null(lastfocuswin) && !is_null(focuswin)) {
+	if (lastfocuswin && focuswin) {
 		movetohead(&wslist[curws], lastfocuswin->wsitem[curws]);
 		lastfocuswin = NULL;
 	}
@@ -599,14 +592,14 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
 	cookie = xcb_get_modifier_mapping_unchecked(conn);
 
 	reply = xcb_get_modifier_mapping_reply(conn, cookie, NULL);
-	if (is_null(reply)) {
+	if (! reply) {
 		return keycodes;
 	}
 
 	keycodes.keycodes = calloc(reply->keycodes_per_modifier,
 			sizeof(xcb_keycode_t));
 
-	if (is_null(keycodes.keycodes)) {
+	if (! keycodes.keycodes) {
 		fprintf(stderr, "Out of memory.\n");
 		destroy(reply);
 		return keycodes;
@@ -654,8 +647,15 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
  */
 void cleanup(int code)
 {
+	for (item_t *item = winlist; item; item = item->next) {
+		client_t *client = item->data;
+		if (client)
+			remove_client(client);
+	}
+
 	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
 			XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
+
 	if (ewmh) {
 		/* TODO * delete atoms */
 		xcb_ewmh_connection_wipe(ewmh);
@@ -696,7 +696,7 @@ void ewmh_update_client_list()
 	uint32_t windows = 0;
 
 	/* leave if no windows */
-	if (is_null(winlist)) {
+	if (! winlist) {
 		xcb_ewmh_set_client_list(ewmh, screen_number, 0, NULL);
 		return;
 	}
@@ -706,7 +706,7 @@ void ewmh_update_client_list()
 
 	/* create window array */
 	window_list = calloc(windows, sizeof(xcb_window_t));
-	if (is_null(window_list)) {
+	if (! window_list) {
 		xcb_ewmh_set_client_list(ewmh, screen_number, 0, NULL);
 		return;
 	}
@@ -772,10 +772,11 @@ void set_workspace(client_t *client, uint32_t ws)
 {
 	item_t *item;
 
+	PDEBUG("set_workspace: 0x%x to WS: %d\n", client->id, ws);
 	if (ws == WORKSPACE_FIXED) {
 		/* add to all workspaces not currently on */
 		for (uint32_t i = 0; i < WORKSPACES; i++) {
-			if (is_null(client->wsitem[i])) {
+			if (! client->wsitem[i]) {
 				if ((item = additem(&wslist[i])) == NULL) {
 					perror("mcwm");
 					return;
@@ -787,15 +788,14 @@ void set_workspace(client_t *client, uint32_t ws)
 	} else {
 		/* remove from all workspaces but ws */
 		for (uint32_t i = 0; i < WORKSPACES; i++) {
-			if (i != ws && ! is_null(client->wsitem[i])) {
+			if (i != ws && client->wsitem[i]) {
 				delitem(&wslist[i], client->wsitem[i]);
 				client->wsitem[i] = NULL;
 			}
 		}
 
-		if (ws != WORKSPACE_NONE) {
-			if (client->wsitem[ws]) /* allready in place */
-				return;
+		/* add if not hidden or allready */
+		if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
 			/* add to destined workspace */
 			if ((item = additem(&wslist[ws])) == NULL) {
 				perror("mcwm");
@@ -818,7 +818,7 @@ void set_workspace(client_t *client, uint32_t ws)
 
 
 /* Change current workspace to ws. */
-void change_ws(uint32_t ws)
+void change_workspace(uint32_t ws)
 {
 	item_t *item;
 	client_t *client;
@@ -863,7 +863,7 @@ void change_ws(uint32_t ws)
 	for (item = wslist[ws]; item; item = item->next) {
 		client = item->data;
 
-		PDEBUG("change_ws. map phase. ws #%d, client-fixed: %d\n",
+		PDEBUG("change_workspace. map phase. ws #%d, client-fixed: %d\n",
 				ws, client->fixed);
 
 		/* Fixed windows are already mapped. Map everything else. */
@@ -892,7 +892,7 @@ void change_ws(uint32_t ws)
  */
 void fix_client(client_t *client)
 {
-	if (is_null(client))
+	if (! client)
 		return;
 
 	client->fixed = ! client->fixed;
@@ -952,10 +952,12 @@ uint32_t getcolor(const char *colstr)
 }
 
 
-int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
+int update_client_geometry(client_t *client,
+		const xcb_rectangle_t *geometry)
 {
 	/* check if geometry changed */
-	if (! is_null(geometry) && memcmp(&geometry, &(client->geometry), sizeof(xcb_rectangle_t)) == 0)
+	if (geometry && memcmp(&geometry, &(client->geometry),
+				sizeof(xcb_rectangle_t)) == 0)
 		return 0;
 
 	xcb_rectangle_t monitor;
@@ -969,7 +971,7 @@ int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry)
 		goto out;
 	}
 
-	if (is_null(geometry)) // update because monitor change e.g.
+	if (! geometry) // update because monitor change e.g.
 		geo = client->geometry;
 	else
 		geo = *geometry;
@@ -1113,7 +1115,7 @@ void new_win(xcb_window_t win)
 	client_t* client = create_client(win);
 	xcb_rectangle_t geometry = client->geometry;
 
-	if (is_null(client)) {
+	if (! client) {
 		fprintf(stderr, "mcwm: Couldn't set up window. Out of memory.\n");
 		return;
 	}
@@ -1124,7 +1126,7 @@ void new_win(xcb_window_t win)
 				win),
 			NULL);
 
-	if (! is_null(attr)) {
+	if (attr) {
 		client->colormap = attr->colormap;
 		destroy(attr);
 	}
@@ -1159,7 +1161,7 @@ void new_win(xcb_window_t win)
 	if (-1 != randrbase) {
 		client->monitor = find_monitor_at(client->geometry.x,
 				client->geometry.y);
-		if (is_null(client->monitor)) {
+		if (! client->monitor) {
 			/*
 			 * Window coordinates are outside all physical monitors.
 			 * Choose the first screen.
@@ -1306,13 +1308,13 @@ client_t *create_client(xcb_window_t win)
 	/* Remember window and store a few things about it. */
 	item = additem(&winlist);
 
-	if (is_null(item)) {
+	if (! item) {
 		fprintf(stderr, "create_client: Out of memory.\n");
 		return NULL;
 	}
 
 	client = calloc(1, sizeof(client_t));
-	if (is_null(client)) {
+	if (! client) {
 		fprintf(stderr, "create_client: Out of memory.\n");
 		return NULL;
 	}
@@ -1405,7 +1407,7 @@ xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym, xcb_key_symbols_t * keysyms
 
 	/* We only use the first keysymbol, even if there are more. */
 	keyp = xcb_key_symbols_get_keycode(keysyms, keysym);
-	if (is_null(keyp)) {
+	if (! keyp) {
 		fprintf(stderr, "mcwm: Couldn't look up key. Exiting.\n");
 		exit(1);
 	}
@@ -1506,7 +1508,7 @@ bool setup_ewmh(void)
 		return false;
 
 	xcb_intern_atom_cookie_t *cookies = xcb_ewmh_init_atoms(conn, ewmh);
-	if (is_null(cookies))
+	if (! cookies)
 		return false;
 
 	if (! xcb_ewmh_init_atoms_replies(ewmh, cookies, NULL)) {
@@ -1578,9 +1580,8 @@ bool setup_screen(void)
 	xcb_query_tree_reply_t *reply =
 		xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->root), 0);
 
-	if (is_null(reply)) {
+	if (! reply)
 		return false;
-	}
 
 	int len = xcb_query_tree_children_length(reply);
 	xcb_window_t *children = xcb_query_tree_children(reply);
@@ -1593,7 +1594,7 @@ bool setup_screen(void)
 					children[i]),
 				NULL);
 
-		if (is_null(attr)) {
+		if (! attr) {
 			fprintf(stderr, "Couldn't get attributes for window %d.",
 					children[i]);
 			continue;
@@ -1612,7 +1613,7 @@ bool setup_screen(void)
 		if (! attr->override_redirect
 				&& attr->map_state == XCB_MAP_STATE_VIEWABLE) {
 			client_t *client;
-			if (is_null(client = create_client(children[i])))
+			if (!(client = create_client(children[i])))
 				continue;
 			/*
 			 * Find the physical output this window will be on if
@@ -1764,7 +1765,7 @@ void get_randr(void)
 
 	rcookie = xcb_randr_get_screen_resources_current(conn, screen->root);
 	res = xcb_randr_get_screen_resources_current_reply(conn, rcookie, NULL);
-	if (is_null(res)) {
+	if (! res) {
 		printf("No RANDR extension available.\n");
 		return;
 	}
@@ -1825,7 +1826,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 		if (name_len <= 0) {
 			name = NULL;
 		} else {
-			if (is_null(name = calloc(name_len + 1, sizeof(char)))) {;
+			if (!(name = calloc(name_len + 1, sizeof(char)))) {
 				perror("mcwm outputs");
 				cleanup(1);
 			}
@@ -1838,8 +1839,8 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 		if (XCB_NONE != output->crtc) {
 			icookie = xcb_randr_get_crtc_info(conn, output->crtc, timestamp);
 			crtc = xcb_randr_get_crtc_info_reply(conn, icookie, NULL);
-			if (is_null(crtc)) {
-				if (!is_null(name)) destroy(name);
+			if (! crtc) {
+				if (name) destroy(name);
 				destroy(output);
 				destroy(ocookie);
 				return;
@@ -1853,14 +1854,14 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 				PDEBUG
 					("Monitor %s, id %d is a clone of %s, id %d. Skipping.\n",
 					 name, outputs[i], clonemon->name, clonemon->id);
-				if (!is_null(name)) destroy(name);
+				if (name) destroy(name);
 				destroy(crtc);
 				destroy(output);
 				continue;
 			}
 
 			/* Do we know this monitor already? */
-			if (is_null((mon = find_monitor(outputs[i])))) {
+			if (!(mon = find_monitor(outputs[i]))) {
 				PDEBUG("Monitor not known, adding to list.\n");
 				add_monitor(outputs[i], name,
 						crtc->x, crtc->y,
@@ -1914,8 +1915,8 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 				for (item = winlist; item; item = item->next) {
 					client = item->data;
 					if (client->monitor == mon) {
-						if (is_null(client->monitor->item->next)) {
-							if (is_null(monlist)) {
+						if (! (client->monitor->item->next)) {
+							if (! monlist) {
 								client->monitor = NULL;
 							} else {
 								client->monitor = monlist->data;
@@ -2029,24 +2030,23 @@ monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 	item_t *item;
 	monitor_t *mon;
 
-	if (is_null((item = additem(&monlist)))) {
+	if (! (item = additem(&monlist))) {
 		perror("mcwm add_monitor");
 		return NULL;
 	}
 
-	mon = calloc(1, sizeof(monitor_t));
-	if (is_null(mon)) {
+	if (! (mon = calloc(1, sizeof(monitor_t)))) {
 		perror("mcwm add_monitor");
 		return NULL;
 	}
 
 	item->data = mon;
 
-	if (is_null(name)) {
-		mon->name = NULL;
-	} else {
+	if (name) {
 		mon->name = calloc(strlen(name) + 1, sizeof(char));
 		strcpy(mon->name, name);
+	} else {
+		mon->name = NULL;
 	}
 
 	mon->id = id;
@@ -2074,7 +2074,7 @@ void raise_or_lower_client(client_t *client)
 	uint32_t values[] = { XCB_STACK_MODE_OPPOSITE };
 	xcb_drawable_t win;
 
-	if (is_null(client))
+	if (! client)
 		return;
 
 	win = client->frame;
@@ -2087,7 +2087,7 @@ void focus_next(void)
 {
 	client_t *client = NULL;
 
-	if (is_null(wslist[curws])) {
+	if (! wslist[curws]) {
 		PDEBUG("No windows to focus on in this workspace.\n");
 		return;
 	}
@@ -2105,11 +2105,11 @@ void focus_next(void)
 	}
 
 	/* If we currently have no focus focus first in list. */
-	if (is_null(focuswin) || is_null(focuswin->wsitem[curws])) {
+	if (! focuswin || ! focuswin->wsitem[curws]) {
 		PDEBUG("Focusing first in list: @%p\n", (void*)wslist[curws]);
 		client = wslist[curws]->data;
 	} else {
-		if (is_null(focuswin->wsitem[curws]->next)) {
+		if (! focuswin->wsitem[curws]->next) {
 			/*
 			 * We were at the end of list. Focusing on first window in
 			 * list unless we were already there.
@@ -2146,7 +2146,7 @@ void focus_next(void)
 void unset_focus()
 {
 	PDEBUG("unset_focus() focuswin = 0x%x\n", focuswin ? focuswin->id : 0);
-	if (is_null(focuswin))
+	if (! focuswin)
 		return;
 
 	client_t *c = focuswin;
@@ -2218,7 +2218,7 @@ void set_focus(client_t *client)
 			client ? client->id : 0, focuswin ? focuswin->id : 0);
 
 	/* If client is NULL, focus on root */
-	if (is_null(client)) {
+	if (! client) {
 		PDEBUG("set_focus: client was NULL! \n");
 
 		/* install default colormap */
@@ -2311,7 +2311,7 @@ void resize_step(client_t *client, step_direction_t direction)
 	int step_x = MOVE_STEP;
 	int step_y = MOVE_STEP;
 
-	if (is_null(client))
+	if (! client)
 		   return;
 
 	xcb_rectangle_t geometry = client->geometry;
@@ -2395,7 +2395,7 @@ void move_step(client_t *client, step_direction_t direction)
 	int16_t start_x;
 	int16_t start_y;
 
-	if (is_null(client))
+	if (! client)
 		return;
 
 	xcb_rectangle_t geo = client->geometry;
@@ -2449,7 +2449,7 @@ void move_step(client_t *client, step_direction_t direction)
 void update_bordercolor(client_t *client)
 {
 	uint32_t color[1];
-	if (is_null(client))
+	if (! client)
 		return;
 	if (client == focuswin) {
 		if (client->fixed)
@@ -2476,7 +2476,7 @@ void set_borders(xcb_drawable_t win, int width)
 
 void unmax(client_t *client)
 {
-	if (is_null(client))
+	if (! client)
 		   return;
 
 	if (!client->fullscreen && !client->vertmaxed) {
@@ -2498,7 +2498,7 @@ void unmax(client_t *client)
 
 void toggle_fullscreen(client_t *client)
 {
-	if (is_null(client))
+	if (! client)
 	   return;
 
 	xcb_rectangle_t monitor;
@@ -2535,7 +2535,7 @@ void toggle_vertical(client_t *client)
 {
 	xcb_rectangle_t monitor;
 
-	if (is_null(client))
+	if (! client)
 	   return;
 
 	get_monitor_geometry(client->monitor, &monitor);
@@ -2697,7 +2697,7 @@ bool get_pointer(xcb_drawable_t win, int16_t *x, int16_t *y)
 			xcb_query_pointer_unchecked(conn, win),
 			0);
 
-	if (is_null(pointer)) {
+	if (! pointer) {
 		return false;
 	}
 
@@ -2717,7 +2717,7 @@ bool get_geometry(xcb_drawable_t win, xcb_rectangle_t *geometry)
 			xcb_get_geometry_unchecked(conn, win),
 			NULL);
 
-	if (is_null(geom))
+	if (! geom)
 		return false;
 
 	geometry->x = geom->x;
@@ -2735,7 +2735,7 @@ void warp_focuswin(step_direction_t direction)
 	int16_t pointx;
 	int16_t pointy;
 
-	if (is_null(focuswin) || focuswin->fullscreen) {
+	if (! focuswin || focuswin->fullscreen) {
 		return;
 	}
 
@@ -2783,7 +2783,7 @@ void send_event(xcb_window_t window, xcb_atom_t atom)
 
 void delete_win(client_t* client)
 {
-	if (is_null(client))
+	if (! client)
 		return;
 
 	if (client->use_delete && client->killed++ < 3) {
@@ -2802,13 +2802,13 @@ void prev_screen(void)
 {
 	item_t *item;
 
-	if (is_null(focuswin) || is_null(focuswin->monitor)) {
+	if (! focuswin || ! focuswin->monitor) {
 		return;
 	}
 
 	item = focuswin->monitor->item->prev;
 
-	if (is_null(item)) {
+	if (! item) {
 		return;
 	}
 
@@ -2825,13 +2825,13 @@ void next_screen(void)
 {
 	item_t *item;
 
-	if (is_null(focuswin) || is_null(focuswin->monitor)) {
+	if (! focuswin || ! focuswin->monitor) {
 		return;
 	}
 
 	item = focuswin->monitor->item->next;
 
-	if (is_null(item)) {
+	if (! item) {
 		return;
 	}
 
@@ -2965,6 +2965,7 @@ void events(void)
 
 		xcb_flush(conn);
 	}
+	PDEBUG("got signal, bailing out!");
 }
 
 /*
@@ -3010,7 +3011,7 @@ void handle_property_notify(xcb_generic_event_t *ev)
 #ifdef DEBUG
 	char* name = get_atomname(e->atom);
 
-	if (is_null(name)) {
+	if (! name) {
 		PDEBUG("0x%x notfifies changed atom (%d)\n", e->window, e->atom);
 	} else {
 		PDEBUG("0x%x notifies changed atom (%d: %s)\n", e->window, e->atom, name);
@@ -3090,7 +3091,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 	 * cursor is in the wrong window (root window or a panel,
 	 * for instance). There is a limit to sloppy focus.
 	 */
-	if (is_null(focuswin)
+	if (! focuswin
 			|| (focuswin->frame != e->child && focuswin->id != e->child)) {
 		PDEBUG("Somehow in the wrong window?\n");
 		return;
@@ -3170,7 +3171,7 @@ void handle_motion_notify(xcb_generic_event_t *ev) //wunused
 
 	update_timestamp(e->time);
 
-	if (is_null(focuswin) || focuswin->fullscreen) {
+	if (! focuswin || focuswin->fullscreen) {
 		return;
 	}
 
@@ -3182,7 +3183,7 @@ void handle_motion_notify(xcb_generic_event_t *ev) //wunused
 	xcb_query_pointer_reply_t *pointer = xcb_query_pointer_reply(conn,
 			xcb_query_pointer(conn, screen->root), 0);
 
-	if (is_null(pointer)) {
+	if (! pointer) {
 		PDEBUG("Couldn't get pointer position.\n");
 		return;
 	}
@@ -3214,7 +3215,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 		return;
 
 	/* We're finished moving or resizing. */
-	if (is_null(focuswin)) {
+	if (! focuswin) {
 		PDEBUG("No focused window when finished moving or resizing!");
 		/*
 		 * We don't seem to have a focused window! Just
@@ -3349,43 +3350,43 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_1:
-					change_ws(0);
+					change_workspace(0);
 					break;
 
 				case KEY_2:
-					change_ws(1);
+					change_workspace(1);
 					break;
 
 				case KEY_3:
-					change_ws(2);
+					change_workspace(2);
 					break;
 
 				case KEY_4:
-					change_ws(3);
+					change_workspace(3);
 					break;
 
 				case KEY_5:
-					change_ws(4);
+					change_workspace(4);
 					break;
 
 				case KEY_6:
-					change_ws(5);
+					change_workspace(5);
 					break;
 
 				case KEY_7:
-					change_ws(6);
+					change_workspace(6);
 					break;
 
 				case KEY_8:
-					change_ws(7);
+					change_workspace(7);
 					break;
 
 				case KEY_9:
-					change_ws(8);
+					change_workspace(8);
 					break;
 
 				case KEY_0:
-					change_ws(9);
+					change_workspace(9);
 					break;
 
 				case KEY_Y:
@@ -3475,15 +3476,11 @@ void handle_key_release(xcb_generic_event_t *ev)
 void handle_enter_notify(xcb_generic_event_t *ev)
 {
 	xcb_enter_notify_event_t *e = (xcb_enter_notify_event_t *) ev;
-	client_t *client = find_clientp(e->event);
 
 	update_timestamp(e->time);
 
-	PDEBUG ("event: Enter notify eventwin 0x%x, child 0x%x, detail %d.\n",
-		 e->event, e->child, e->detail);
-
-	if (is_null(client))
-		return;
+	PDEBUG ("event: Enter notify eventwin 0x%x, child 0x%x, detail %d, mode %d\n",
+		 e->event, e->child, e->detail, e->mode);
 
 	/*
 	 * If this isn't a normal enter notify, don't bother.
@@ -3504,6 +3501,21 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 				|| e->mode != XCB_NOTIFY_MODE_UNGRAB)) {
 		return;
 	}
+
+	if (e->event == screen->root) {
+		/* root window entered */
+		if (! focuswin) {
+			/* lost focus */
+			PDEBUG("HARHARHAR\n");
+			set_focus(NULL);
+		}
+		return;
+	}
+
+	client_t *client = find_clientp(e->event);
+	if (! client)
+		return;
+
 
 #ifdef DEBUG
 	/* TODO * why is that */
@@ -3622,7 +3634,9 @@ void handle_configure_request(xcb_generic_event_t *ev)
 	xcb_rectangle_t geometry = client->geometry;
 
 	/* Find monitor position and size. */
-	get_monitor_geometry(is_null(client) ? NULL : client->monitor, &mon);
+	get_monitor_geometry(client ? client->monitor : NULL, &mon);
+
+	PDEBUG("VALUE MASK: e->value_mask == %d\n", e->value_mask);
 
 	/* Don't resize if maximized. */
 	if (! client->fullscreen) {
@@ -3949,7 +3963,7 @@ char* get_atomname(xcb_atom_t atom)
 	an_rep = xcb_get_atom_name_reply(conn,
 			xcb_get_atom_name_unchecked(conn, atom), NULL);
 
-	if (is_null(an_rep)) {
+	if (! an_rep) {
 		return NULL;
 	}
 	name = calloc(xcb_get_atom_name_name_length(an_rep) + 1,
@@ -3964,7 +3978,7 @@ char* get_atomname(xcb_atom_t atom)
 
 void get_monitor_geometry(monitor_t* monitor, xcb_rectangle_t* sp)
 {
-	if (is_null(monitor)) {
+	if (! monitor) {
 		/*
 		 * A window isn't attached to any physical monitor. This
 		 * probably means there is no RANDR, so we use the root window
@@ -4087,7 +4101,7 @@ int main(int argc, char **argv)
 	}
 
 	screen = iter.data;
-	if (is_null(screen)) {
+	if (! screen) {
 		fprintf(stderr, "mcwm: Can't get the current screen. Exiting.\n");
 		xcb_disconnect(conn);
 		exit(1);
@@ -4180,12 +4194,12 @@ void set_input_focus(xcb_window_t win)
 	if (win == XCB_WINDOW_NONE) {
 		pointer = xcb_query_pointer_reply(conn,
 				xcb_query_pointer(conn, screen->root), 0);
-		if (! is_null(pointer)) {
+		if (pointer) {
 			win = pointer->child;
 			destroy(pointer);
 		}
 	}
-	if (!is_null(client = find_clientp(win))) {
+	if ((client = find_clientp(win))) {
 		set_focus(client);
 	}
 }

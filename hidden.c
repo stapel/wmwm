@@ -59,7 +59,7 @@ int32_t ewmh_get_workspace(xcb_drawable_t win)
 	uint32_t ws;
 
 	cookie = xcb_ewmh_get_wm_desktop_unchecked(ewmh, win);
-	
+
 	if (! xcb_ewmh_get_wm_desktop_reply(ewmh, cookie, &ws, NULL))
 		ws = -1;
 	return ws;
@@ -123,7 +123,7 @@ int get_wm_name_icccm(xcb_window_t win, char **string, int* len)
 	xcb_icccm_get_text_property_reply_t	data;
 
 	cookie = xcb_icccm_get_wm_name(conn, win);
-	if (! xcb_icccm_get_wm_name_reply(conn, cookie, &data, NULL)) 
+	if (! xcb_icccm_get_wm_name_reply(conn, cookie, &data, NULL))
 		return 0;
 
 	if (data.name_len) {

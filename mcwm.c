@@ -29,6 +29,7 @@
    wine e.g. has allow_focus == false! so no falling back if killed ? XXX
    THIS HAPPENS WHEN THE CLIENT SETS FOCUS BY ITSELF AND
    USES revert_to = parent, this in turn reverts to 0,0 if no parent
+ * disallow configure_win x,y again ?
  * function
 !* Error handling
 ?* LVDS is seen as clone of VGA-0? look at special-log
@@ -3504,11 +3505,8 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 
 	if (e->event == screen->root) {
 		/* root window entered */
-		if (! focuswin) {
-			/* lost focus */
-			PDEBUG("HARHARHAR\n");
-			set_focus(NULL);
-		}
+		if (! focuswin)
+			set_focus(NULL); /* lost focus */
 		return;
 	}
 
@@ -3635,8 +3633,6 @@ void handle_configure_request(xcb_generic_event_t *ev)
 
 	/* Find monitor position and size. */
 	get_monitor_geometry(client ? client->monitor : NULL, &mon);
-
-	PDEBUG("VALUE MASK: e->value_mask == %d\n", e->value_mask);
 
 	/* Don't resize if maximized. */
 	if (! client->fullscreen) {

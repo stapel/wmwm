@@ -24,8 +24,6 @@
  */
 
 /* XXX THINGS TODO XXX
-!* XXX next todo: withdrawn, iconic, remove_client etc. cleanup
-!* colormaps
 !* MWM hints
 !* focus still can be lost (e.g. wine)
    wine e.g. has allow_focus == false! so no falling back if killed ? XXX
@@ -33,8 +31,6 @@
    USES revert_to = parent, this in turn reverts to 0,0 if no parent
  * function
 !* Error handling
-!* maximize and fitonscreen share similar code
-!* too many errors on closing client, don't set it to withdrawn
 ?* LVDS is seen as clone of VGA-0? look at special-log
 !* make checks if hints actually exist (not to use inc_width etc...)
  * NET_WM_STATE client message
@@ -117,11 +113,12 @@ typedef enum {
 /* Number of workspaces. */
 #define WORKSPACES 10u
 
-/* Value in WM hint which means this window is fixed on all workspaces. */
-#define NET_WM_FIXED 0xffffffff
-
 /* This means we didn't get any window hint at all. */
-#define MCWM_NOWS 0xfffffffe
+#define WORKSPACE_NONE  0xfffffffe
+#define WORKSPACE_FIXED 0xffffffff
+
+/* Value in WM hint which means this window is fixed on all workspaces. */
+#define NET_WM_FIXED WORKSPACE_FIXED
 
 /* Default Client Events
  *
@@ -232,7 +229,7 @@ typedef struct client {
 
 	int killed;						/* number of times we sent delete_window message */
 
-	int ignore_unmap;				/* number of unmap_notifications we shall ignore */
+	bool ignore_unmap;				/* unmap_notification we shall ignore */
 
 	monitor_t *monitor;				/* The physical output this window is on. */
 	item_t *winitem;				/* Pointer to our place in global windows list. */
@@ -427,8 +424,7 @@ static char* get_atomname(xcb_atom_t atom);
 #endif
 
 static bool ewmh_is_fullscreen(client_t*);
-static void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws);
-static int32_t ewmh_get_workspace(xcb_drawable_t win);
+static uint32_t ewmh_get_workspace(xcb_drawable_t win);
 static void ewmh_update_client_list();
 static void ewmh_frame_extents(xcb_window_t win, int width);
 
@@ -437,12 +433,11 @@ static void mouse_move(client_t *client, int rel_x, int rel_y);
 static void mouse_resize(client_t *client, int rel_x, int rel_y);
 static void move_step(client_t *client, step_direction_t direction);
 
-static void add_to_ws(client_t *client, uint32_t ws);
-static void del_from_ws(client_t *client, uint32_t ws);
+static void set_workspace(client_t *client, uint32_t ws);
 static void change_ws(uint32_t ws);
 
-static void fix_client(client_t *client, bool set_color);
-static void set_shape(client_t* client);
+static void fix_client(client_t *client);
+static void set_shape(client_t *client);
 static void raise_client(client_t *client);
 static void raise_or_lower_client(client_t *client);
 static void set_focus(client_t *client);
@@ -464,13 +459,14 @@ void send_event(xcb_window_t window, xcb_atom_t atom);
 
 static void set_input_focus(xcb_window_t win);
 static void set_borders(xcb_drawable_t win, int width);
+static void update_bordercolor(client_t* client);
 
 static void arrbymon(monitor_t *monitor);
 static void arrangewindows(void);
 
 static int start(char *program);
 static void new_win(xcb_window_t win);
-static client_t *setup_win(xcb_window_t win);
+static client_t *create_client(xcb_window_t win);
 
 static struct modkeycodes get_modkeys(xcb_mod_mask_t modmask);
 static xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym,
@@ -725,13 +721,6 @@ void ewmh_update_client_list()
 	destroy(window_list);
 }
 
-/* Set the EWMH hint that window win belongs on workspace ws. */
-void ewmh_set_workspace(xcb_drawable_t win, uint32_t ws)
-{
-	PDEBUG("Changing _NET_WM_DESKTOP on window 0x%x to %d\n", win, ws);
-	xcb_ewmh_set_wm_desktop(ewmh, win, ws);
-}
-
 /*
  * Check if window has _NET_WM_STATE_FULLSCREEN atom
  */
@@ -762,57 +751,71 @@ bool ewmh_is_fullscreen(client_t* client)
  * visible on.
  *
  * Returns either workspace, NET_WM_FIXED if this window should be
- * visible on all workspaces or MCWM_NOWS if we didn't find any hints.
+ * visible on all workspaces or WORKSPACE_NONE if we didn't find any hints.
  */
-int32_t ewmh_get_workspace(xcb_drawable_t win)
+uint32_t ewmh_get_workspace(xcb_drawable_t win)
 {
 	xcb_get_property_cookie_t cookie;
 	uint32_t ws;
 
 	cookie = xcb_ewmh_get_wm_desktop_unchecked(ewmh, win);
-
 	if (! xcb_ewmh_get_wm_desktop_reply(ewmh, cookie, &ws, NULL)) {
-		fprintf(stderr, "mcwm: Couldn't get properties for win %d\n", win);
-		return MCWM_NOWS;
+		return WORKSPACE_NONE;
 	}
 	return ws;
 }
 
-/* Add a window, specified by client, to workspace ws. */
-void add_to_ws(client_t *client, uint32_t ws)
+/*
+ * set client to one/all or no workspace
+ */
+void set_workspace(client_t *client, uint32_t ws)
 {
 	item_t *item;
 
-	if ((item = additem(&wslist[ws])) == NULL) {
-		PDEBUG("add_to_ws: Out of memory.\n");
-		return;
+	if (ws == WORKSPACE_FIXED) {
+		/* add to all workspaces not currently on */
+		for (uint32_t i = 0; i < WORKSPACES; i++) {
+			if (is_null(client->wsitem[i])) {
+				if ((item = additem(&wslist[i])) == NULL) {
+					perror("mcwm");
+					return;
+				}
+				client->wsitem[i] = item;
+				item->data = client;
+			}
+		}
+	} else {
+		/* remove from all workspaces but ws */
+		for (uint32_t i = 0; i < WORKSPACES; i++) {
+			if (i != ws && ! is_null(client->wsitem[i])) {
+				delitem(&wslist[i], client->wsitem[i]);
+				client->wsitem[i] = NULL;
+			}
+		}
+
+		if (ws != WORKSPACE_NONE) {
+			if (client->wsitem[ws]) /* allready in place */
+				return;
+			/* add to destined workspace */
+			if ((item = additem(&wslist[ws])) == NULL) {
+				perror("mcwm");
+				return;
+			}
+			client->wsitem[ws] = item;
+			item->data = client;
+		}
 	}
 
-	/* Remember our place in the workspace window list. */
-	client->wsitem[ws] = item;
-
-	/* Remember the data. */
-	item->data = client;
-
-	/*
-	 * Set window hint property so we can survive a crash.
-	 *
-	 * Fixed windows have their own special WM hint. We don't want to
-	 * mess with that.
-	 */
-	if (! client->fixed) {
-		ewmh_set_workspace(client->id, ws);
+	/* Set _NET_WM_DESKTOP accordingly or leave it  */
+	if (ws != WORKSPACE_NONE) {
+		xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
 	}
+/*	else {
+		xcb_delete_property(conn, client->id, ewmh->_NET_WM_DESKTOP);
+	}
+*/
 }
 
-/* Delete window client from workspace ws. */
-void del_from_ws(client_t *client, uint32_t ws)
-{
-	delitem(&wslist[ws], client->wsitem[ws]);
-
-	/* Reset our place in the workspace window list. */
-	client->wsitem[ws] = NULL;
-}
 
 /* Change current workspace to ws. */
 void change_ws(uint32_t ws)
@@ -832,7 +835,6 @@ void change_ws(uint32_t ws)
 	 */
 	if (focuswin && !focuswin->fixed) {
 		unset_focus();
-		focuswin = NULL;
 	}
 
 	/* Apply hidden window event mask, this ensures no invalid enter events */
@@ -842,10 +844,10 @@ void change_ws(uint32_t ws)
 			set_hidden_events(client);
 		}
 	}
+
 	/* Go through list of current ws. Unmap everything that isn't fixed. */
 	for (item = wslist[curws]; item; item = item->next) {
 		client = item->data;
-
 		if (! client->fixed) {
 			/*
 			 * This is an ordinary window. Just unmap it. Note that
@@ -888,54 +890,29 @@ void change_ws(uint32_t ws)
  * Fix or unfix a window client from all workspaces. If set_color is
  * set, also change back to ordinary focus colour when unfixing.
  */
-void fix_client(client_t *client, bool set_color)
+void fix_client(client_t *client)
 {
 	if (is_null(client))
 		return;
 
+	client->fixed = ! client->fixed;
+
 	if (client->fixed) {
-		client->fixed = false;
-		ewmh_set_workspace(client->id, curws);
-
-		if (set_color) {
-			/* Set border color to ordinary focus colour. */
-			uint32_t values[1] = { conf.focuscol };
-			xcb_change_window_attributes(conn, client->frame,
-					XCB_CW_BORDER_PIXEL, values);
-		}
-
-		/* Delete from all workspace lists except current. */
-		for (uint32_t ws = 0; ws < WORKSPACES; ws++) {
-			if (ws != curws) {
-				del_from_ws(client, ws);
-			}
-		}
-	} else {
 		/*
 		 * First raise the window. If we're going to another desktop
 		 * we don't want this fixed window to be occluded behind
 		 * something else.
 		 */
 		raise_client(client);
-
-		client->fixed = true;
-		ewmh_set_workspace(client->id, NET_WM_FIXED);
-
-		/* Add window to all workspace lists. */
-		for (uint32_t ws = 0; ws < WORKSPACES; ws++) {
-			if (ws != curws) {
-				add_to_ws(client, ws);
-			}
-		}
-
-		if (set_color) {
-			/* Set border color to fixed colour. */
-			uint32_t values[1] = { conf.fixedcol };
-			xcb_change_window_attributes(conn, client->frame,
-					XCB_CW_BORDER_PIXEL, values);
-		}
+		set_workspace(client, WORKSPACE_FIXED);
+	} else {
+		set_workspace(client, curws);
 	}
 
+	/* set border color */
+	update_bordercolor(client);
+
+	/* update _NET_WM_STATE */
 	ewmh_update_state(client);
 }
 
@@ -947,7 +924,6 @@ void fix_client(client_t *client, bool set_color)
 uint32_t getcolor(const char *colstr)
 {
 	xcb_alloc_named_color_reply_t *col_reply;
-	xcb_colormap_t colormap;
 	xcb_generic_error_t *error;
 	xcb_alloc_named_color_cookie_t colcookie;
 
@@ -959,8 +935,7 @@ uint32_t getcolor(const char *colstr)
 	if (strlen(colstr) > 1 && *colstr == '#') {
 		return (uint32_t)strtoul((colstr + 1), NULL, 16);
 	}
-	colormap = screen->default_colormap;
-	colcookie = xcb_alloc_named_color(conn, colormap, strlen(colstr),
+	colcookie = xcb_alloc_named_color(conn, screen->default_colormap, strlen(colstr),
 			colstr);
 	col_reply = xcb_alloc_named_color_reply(conn, colcookie, &error);
 
@@ -1135,7 +1110,7 @@ void new_win(xcb_window_t win)
 	 * Set up stuff, like borders, add the window to the client list,
 	 * et cetera.
 	 */
-	client_t* client = setup_win(win);
+	client_t* client = create_client(win);
 	xcb_rectangle_t geometry = client->geometry;
 
 	if (is_null(client)) {
@@ -1155,7 +1130,7 @@ void new_win(xcb_window_t win)
 	}
 
 	/* Add this window to the current workspace. */
-	add_to_ws(client, curws);
+	set_workspace(client, curws);
 
 	/*
 	 * If the client doesn't say the user specified the coordinates
@@ -1319,7 +1294,7 @@ void icccm_update_wm_protocols(client_t* client)
  * reparent etc.
  * Executed for each new handled window (unlike newwin)
  * */
-client_t *setup_win(xcb_window_t win)
+client_t *create_client(xcb_window_t win)
 {
 	item_t *item;
 	client_t *client;
@@ -1332,13 +1307,13 @@ client_t *setup_win(xcb_window_t win)
 	item = additem(&winlist);
 
 	if (is_null(item)) {
-		fprintf(stderr, "setup_win: Out of memory.\n");
+		fprintf(stderr, "create_client: Out of memory.\n");
 		return NULL;
 	}
 
 	client = calloc(1, sizeof(client_t));
 	if (is_null(client)) {
-		fprintf(stderr, "setup_win: Out of memory.\n");
+		fprintf(stderr, "create_client: Out of memory.\n");
 		return NULL;
 	}
 
@@ -1360,13 +1335,13 @@ client_t *setup_win(xcb_window_t win)
 	client->use_delete = false;
 
 	client->allow_focus = true;
+	client->ignore_unmap = false;
 
 	client->colormap = screen->default_colormap;
 
 	client->ewmh_state_set = false;
 
 	client->killed = 0;
-	client->ignore_unmap = 0;
 
 	client->winitem = item;
 
@@ -1637,7 +1612,7 @@ bool setup_screen(void)
 		if (! attr->override_redirect
 				&& attr->map_state == XCB_MAP_STATE_VIEWABLE) {
 			client_t *client;
-			if (is_null(client = setup_win(children[i])))
+			if (is_null(client = create_client(children[i])))
 				continue;
 			/*
 			 * Find the physical output this window will be on if
@@ -1672,25 +1647,21 @@ bool setup_screen(void)
 			uint32_t ws = ewmh_get_workspace(children[i]);
 
 			if (ws == NET_WM_FIXED) {
-				/* Add to current workspace. */
-				add_to_ws(client, curws);
-				/* Add to all other workspaces. */
-				fix_client(client, false);
+				fix_client(client);
 				show(client);
 			} else if (ws < WORKSPACES) {
-				add_to_ws(client, ws);
+				set_workspace(client, ws);
 				/* If it's on our current workspace, show it, else hide it. */
-				if (ws == curws) {
+				if (ws == curws)
 					show(client);
-				} else {
+				else
 					hide(client);
-				}
 			} else {
 				/*
-				 * No workspace hint at all. Just add it to our
+				 * No workspace hint or bad one. Just add it to our
 				 * current workspace.
 				 */
-				add_to_ws(client, curws);
+				set_workspace(client, curws);
 				show(client);
 			}
 		}
@@ -2174,16 +2145,14 @@ void focus_next(void)
 /* Mark window win as unfocused. */
 void unset_focus()
 {
-	uint32_t values[1];
-
 	PDEBUG("unset_focus() focuswin = 0x%x\n", focuswin ? focuswin->id : 0);
 	if (is_null(focuswin))
 		return;
 
+	client_t *c = focuswin;
+	focuswin = NULL;
 	/* Set new border colour. */
-	values[0] = conf.unfocuscol;
-	xcb_change_window_attributes(conn, focuswin->frame,
-			XCB_CW_BORDER_PIXEL, values);
+	update_bordercolor(c);
 }
 
 /*
@@ -2244,7 +2213,6 @@ void set_focus(client_t *client)
 	/* XXX what when we do send a event and the client asks in return?
 	 * XXX we should check if that client is on the current ws
 	 */
-	uint32_t values[1];
 
 	PDEBUG("set_focus: client = 0x%x (focuswin = 0x%x)\n",
 			client ? client->id : 0, focuswin ? focuswin->id : 0);
@@ -2280,27 +2248,22 @@ void set_focus(client_t *client)
 		send_event(client->id, icccm.wm_take_focus);
 	}
 
-	/* Set new border colour. */
-	if (client->fixed) {
-		values[0] = conf.fixedcol;
-	} else {
-		values[0] = conf.focuscol;
-	}
-	xcb_change_window_attributes(conn, client->frame, XCB_CW_BORDER_PIXEL, values);
-
 	/* Unset last focus. */
 	if (focuswin) {
 		unset_focus();
 	}
+
+	/* Remember the new window as the current focused window. */
+	focuswin = client;
+
+	/* Set new border colour. */
+	update_bordercolor(client);
 
 	/* install clients colormap */
 	xcb_install_colormap(conn, client->colormap);
 
 	/* set active window ewmh-hint */
 	xcb_ewmh_set_active_window(ewmh, screen_number, client->id);
-
-	/* Remember the new window as the current focused window. */
-	focuswin = client;
 }
 
 int start(char *program)
@@ -2483,6 +2446,23 @@ void move_step(client_t *client, step_direction_t direction)
 	}
 }
 
+void update_bordercolor(client_t *client)
+{
+	uint32_t color[1];
+	if (is_null(client))
+		return;
+	if (client == focuswin) {
+		if (client->fixed)
+			color[0] = conf.fixedcol;
+		else
+			color[0] = conf.focuscol;
+	} else {
+		color[0] = conf.unfocuscol;
+	}
+	xcb_change_window_attributes(conn, client->frame,
+		XCB_CW_BORDER_PIXEL, color);
+}
+
 void set_borders(xcb_drawable_t win, int width)
 {
 	uint32_t values[1];
@@ -2592,14 +2572,14 @@ void toggle_vertical(client_t *client)
 void set_default_events(client_t *client)
 {
 	const uint32_t	mask = XCB_CW_EVENT_MASK;
-	const uint32_t	values[] = { DEFAULT_FRAME_EVENTS};
+	const uint32_t	values[] = { DEFAULT_FRAME_EVENTS };
 	xcb_change_window_attributes(conn, client->frame, mask, values);
 }
 
 void set_hidden_events(client_t *client)
 {
 	const uint32_t	mask = XCB_CW_EVENT_MASK;
-	const uint32_t	values[] = { HIDDEN_FRAME_EVENTS};
+	const uint32_t	values[] = { HIDDEN_FRAME_EVENTS };
 	xcb_change_window_attributes(conn, client->frame, mask, values);
 }
 
@@ -2622,14 +2602,11 @@ void hide(client_t *client)
 
 	/*
 	 * Unmap window and declare iconic.
-	 *
-	 * Unmapping will generate an UnmapNotify event so we can forget
-	 * about the window later.
-	 * The quantity of that events will be mentioned in ignore_unmap.
+	 * Set ignore_unmap not to remove the client.
 	 */
-	client->ignore_unmap++;
-	PDEBUG("++ignore_unmap == %d\n", client->ignore_unmap);
-	/* 4.1.4
+	client->ignore_unmap = true;
+
+	/* ICCCM 4.1.4
 	 * Reparenting window managers must unmap the client's window
 	 * when it is in the Iconic state, even if an ancestor window
 	 * being unmapped renders the client's window unviewable.
@@ -2640,51 +2617,31 @@ void hide(client_t *client)
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
 }
 
-/* Reparent client window to root and set state ti WITHDRAWN */
-void withdraw_client(client_t* client)
-{
-	/* TODO: Make one withdraw and one to just kill it
-	 *
-	 * */
-	long data[] = { XCB_ICCCM_WM_STATE_WITHDRAWN, XCB_NONE };
-	xcb_generic_error_t *error;
-	xcb_void_cookie_t vc;
-
-	PDEBUG("Reparenting 0x%x to 0x%x\n", client->id, screen->root);
-	vc = xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0);
-	error = xcb_request_check(conn, vc);
-	if (! error) {
-		PDEBUG(" and set window to withdrawn state\n");
-		xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
-			icccm.wm_state, icccm.wm_state, 32, 2, data);
-	} else {
-		PDEBUG("Could not reparent 0x%x back to root\n", client->id);
-		print_x_error(error);
-		destroy(error);
-	}
-	/* XXX check out the error-code */
-	xcb_destroy_window(conn, client->frame);
-}
-
 /* Forget everything about client client. */
 void remove_client(client_t *client)
 {
 	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
 
-	if (focuswin == client) focuswin = NULL;
-	if (lastfocuswin == client) lastfocuswin = NULL;
+	xcb_generic_error_t *error = NULL;
 
-	/*
-	 * Delete this client from whatever workspace lists it belongs to.
-	 * Note that it's OK to be on several workspaces at once even if
-	 * you're not fixed.
-	 */
-	for (uint32_t ws = 0; ws < WORKSPACES; ws++) {
-		if (client->wsitem[ws]) {
-			del_from_ws(client, ws);
-		}
+	/* set_focus ? XXX */
+	if (focuswin == client)
+		focuswin = NULL;
+	if (lastfocuswin == client)
+		lastfocuswin = NULL;
+
+	if (client->frame != XCB_WINDOW_NONE) {
+		error = xcb_request_check(conn,
+				xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0));
+		xcb_destroy_window(conn, client->frame);
 	}
-	xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
+
+	/* remove from all workspaces */
+	set_workspace(client, WORKSPACE_NONE);
+
+	/* check if the window is allready gone */
+	if (! error || error->error_code != XCB_WINDOW)
+		xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
 
 	/* Remove from global window list. */
 	freeitem(&winlist, NULL, client->winitem);
@@ -3083,9 +3040,13 @@ void handle_colormap_notify(xcb_generic_event_t *ev)
 {
 	xcb_colormap_notify_event_t *e = (xcb_colormap_notify_event_t*) ev;
 
-	client_t *c = find_client(e->window);
-	if (c && e->_new)
-		xcb_install_colormap(conn, e->colormap);
+	client_t* c;
+	/* colormap has changed (not un/-installed) */
+	if (e->_new && (c = find_client(e->window))) {
+		c->colormap = e->colormap;
+		if (c == focuswin)
+			xcb_install_colormap(conn, e->colormap);
+	}
 }
 
 void handle_button_press(xcb_generic_event_t* ev)
@@ -3356,7 +3317,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_F:		/* f */
-					fix_client(focuswin, true);
+					fix_client(focuswin);
 					break;
 
 				case KEY_H:		/* left */
@@ -3459,6 +3420,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					if (conf.allowicons) {
 						set_hidden_events(focuswin);
 						hide(focuswin);
+						set_workspace(focuswin, WORKSPACE_NONE);
 					}
 					break;
 				default:
@@ -3540,7 +3502,6 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 
 	if (!(e->mode == XCB_NOTIFY_MODE_NORMAL
 				|| e->mode != XCB_NOTIFY_MODE_UNGRAB)) {
-		PDEBUG("Not a normal enter notify!\n");
 		return;
 	}
 
@@ -3708,6 +3669,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	/* Some window want's to know how our frame extends, anyone welcome */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
+		/* XXX check for hints to see if it has border at all (transient etc) ? */
 		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n", e->window);
 		ewmh_frame_extents(e->window, client && client->fullscreen ? 0 : conf.borderwidth);
 		return;
@@ -3726,6 +3688,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 			if (e->data.data32[0] == XCB_ICCCM_WM_STATE_ICONIC) {
 				set_hidden_events(client);
 				hide(client);
+				set_workspace(client, WORKSPACE_NONE);
 				return;
 			}
 		}
@@ -3875,15 +3838,7 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 	 * unmapped on *another* workspace when changing
 	 * workspaces, for instance, or it might be a window with
 	 * override redirect set. This is not an error.
-	 *
 	 */
-	// XXX
-	// maybe like evilwm c->ignore_unmap
-	// also see dwm.c
-
-	// XXX differentate between notifies between parent and id XXX
-	// CURRENT
-	//
 
 	PDEBUG("unmap_notify: sent=%d event=0x%x, window=0x%x, seq=%d\n",
 			XCB_EVENT_SENT(ev),
@@ -3894,20 +3849,21 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 		return;
 
 	/* we await that unmap, do nothing */
-	if (client->ignore_unmap > 0) {
-		client->ignore_unmap--;
-		PDEBUG("--ignore_unmap\n");
+	if (client->ignore_unmap) {
+		client->ignore_unmap = false;
 		return;
 	}
 
+#if 0
 	/* see ICCCM 4.1.4. Changing Window State
-	 * When changing the state of the window to Withdrawn, the client must (in addition to unmapping the window) send a synthetic UnmapNotify event by using a SendEvent request with the following arguments
+	 * When changing the state of the window to Withdrawn, the client must (in addition to unmapping
+	   the window) send a synthetic UnmapNotify event by using a SendEvent
 	 */
 	if (XCB_EVENT_SENT(ev)) {
 		// synthetic event, indicates wanting to withdrawn state
 		PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);
 	}
-	withdraw_client(client);
+#endif
 	remove_client(client);
 }
 
@@ -3915,7 +3871,8 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 {
 	/*
 	 * Find this window in list of clients and forget about
-	 * it.
+	 * it. (It might hidden while being destroyed,
+	 * so no unmap notify)
 	 */
 
 	const xcb_destroy_notify_event_t *e
@@ -3924,25 +3881,8 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 	client_t *client = find_client(e->window);
 	PDEBUG("destroy_notify for 0x%x (is client = %d)\n", e->window, client ? 1 : 0);
 
-	if (is_null(client))
-		return;
-
-	/*
-	 * If we had focus or our last focus in this window,
-	 * forget about the focus.
-	 *
-	 * We will get an EnterNotify if there's another window
-	 * under the pointer so we can set the focus proper later.
-	 */
-
-	/*
-	 * (We should never ever have a client at this state, right?)
-	 * Can happen when is on another workspace (or just "hidden")
-	 */
-	PDEBUG("Destroy frame window if it still exists (0x%x)\n",
-			client->frame);
-	xcb_destroy_window(conn, client->frame);
-	remove_client(client);
+	if (client)
+		remove_client(client);
 }
 
 #if 0

@@ -465,7 +465,8 @@ static void hide(client_t *client);
 static void remove_client(client_t *client);
 static void show(client_t *client);
 
-void send_event(xcb_window_t window, xcb_atom_t atom);
+void send_client_message(xcb_window_t window, xcb_atom_t atom);
+void send_configuration(client_t *client);
 
 static void set_input_focus(xcb_window_t win);
 static void set_borders(xcb_drawable_t win, int width);
@@ -498,7 +499,7 @@ static monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 								  uint32_t x, uint32_t y, uint16_t width,
 								  uint16_t height);
 
-static void apply_gravity(client_t *client)
+static void apply_gravity(client_t *client, xcb_rectangle_t* geometry);
 static int update_geometry(client_t *client, const xcb_rectangle_t *geometry);
 
 static client_t *find_client(xcb_drawable_t win);
@@ -531,6 +532,12 @@ static bool			is_mode(wm_mode_t modus)	{ return (get_mode() == modus); }
 static xcb_timestamp_t get_timestamp() { return current_time; }
 static void set_timestamp(xcb_timestamp_t t) { current_time = t; }
 static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME) current_time = t; }
+
+void XCB_FLUSH(xcb_connection_t *conn)
+{
+	xcb_flush(conn);
+	PDEBUG("xcb_flush()\n");
+}
 
 /*
  * Update client's window's atoms
@@ -891,7 +898,8 @@ void change_workspace(uint32_t ws)
 			set_default_events(client);
 		}
 	}
-	xcb_flush(conn);
+	XCB_FLUSH(conn);
+	/* set focus on the window under the mouse */
 	set_input_focus(XCB_WINDOW_NONE);
 
 	xcb_ewmh_set_current_desktop(ewmh, screen_number, ws);
@@ -1097,9 +1105,14 @@ out: ;
 	if (fm)
 		xcb_configure_window(conn, client->frame, frame_value_mask,
 				frame_values);
+
 	/* client modified (resize) */
 	if (cm)
 		xcb_configure_window(conn, client->id, value_mask, values);
+
+	/* send information about positional change to client */
+	if (fm > cm)
+		send_configuration(client);
 
 	return 1;
 }
@@ -1184,6 +1197,7 @@ void new_win(xcb_window_t win)
 		}
 	}
 
+	apply_gravity(client, &geometry);
 	update_geometry(client, &geometry);
 
 	/* Show window on screen. */
@@ -1375,6 +1389,7 @@ client_t *create_client(xcb_window_t win)
 
 	/* XXX order of statements!
 	 * geometry, hints, update_gometry, attach_frame ...
+	 * (new_win, create_client)
 	 */
 	attach_frame(client);
 
@@ -1496,7 +1511,7 @@ bool setup_keys(void)
 	} /* for */
 
 	/* Need this to take effect NOW! */
-	xcb_flush(conn);
+	XCB_FLUSH(conn);
 
 	/* Get rid of the key symbols table. */
 	xcb_key_symbols_free(keysyms);
@@ -2260,7 +2275,7 @@ void set_focus(client_t *client)
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
 				client->id, get_timestamp());
 	} else if (client->take_focus) {
-		send_event(client->id, icccm.wm_take_focus);
+		send_client_message(client->id, icccm.wm_take_focus);
 	}
 
 	/* Unset last focus. */
@@ -2782,7 +2797,28 @@ void warp_focuswin(step_direction_t direction)
 	}
 }
 
-void send_event(xcb_window_t window, xcb_atom_t atom)
+/* inform client's window about esp. where it is */
+void send_configuration(client_t *client)
+{
+	xcb_configure_notify_event_t ev = {
+		.response_type = XCB_CONFIGURE_NOTIFY,
+		.sequence = 0,
+		.event = client->id,
+		.window = client->id,
+		.above_sibling = XCB_NONE,
+		.x = client->geometry.x,
+		.y = client->geometry.y,
+		.width = client->geometry.width,
+		.height = client->geometry.height,
+		.border_width = 0,
+		.override_redirect = 0
+	};
+	xcb_send_event(conn, false, client->id,
+			XCB_EVENT_MASK_NO_EVENT, (char *) &ev);
+	PDEBUG("send_configuration 0x%x (%d,%d)\n", client->id, ev.x, ev.y);
+}
+
+void send_client_message(xcb_window_t window, xcb_atom_t atom)
 {
 #if DEBUG
 	char* aname = get_atomname(atom);
@@ -2809,8 +2845,8 @@ void delete_win(client_t* client)
 
 	if (client->use_delete && client->killed++ < 3) {
 		/* WM_DELETE_WINDOW message */
-		send_event(client->id, icccm.wm_delete_window);
-		PDEBUG("delete_win: 0x%x (send_event #%d)\n", client->id,
+		send_client_message(client->id, icccm.wm_delete_window);
+		PDEBUG("delete_win: 0x%x (send_client_message #%d)\n", client->id,
 				client->killed);
 	} else {
 		/* WM_DELETE_WINDOW either NA or failed 3 times  */
@@ -2934,7 +2970,6 @@ void events(void)
 		 */
 
 		FD_ZERO(&in); FD_SET(fd, &in);
-
 		if (select(fd + 1, &in, NULL, NULL, NULL) == -1) {
 			/* We received a signal. Break out of loop. */
 			if (errno == EINTR)
@@ -2943,8 +2978,9 @@ void events(void)
 			perror("mcwm select");
 			cleanup(1);
 		}
-
+		int count = 0;
 		while ((ev = xcb_poll_for_event(conn))) {
+			++count;
 			const uint8_t response_type = XCB_EVENT_RESPONSE_TYPE(ev);
 			PDEBUG("Event: %s (%d, handler: %d)\n",
 					xcb_event_get_label(response_type),
@@ -2983,8 +3019,9 @@ void events(void)
 		if (xcb_connection_has_error(conn)) {
 			cleanup(1);
 		}
-
-		xcb_flush(conn);
+		if (count)
+			XCB_FLUSH(conn);
+		PDEBUG("XXX %d events XXX\n", count);
 	}
 	PDEBUG("got signal, bailing out!");
 }
@@ -3175,7 +3212,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 			XCB_GRAB_MODE_ASYNC,
 			XCB_GRAB_MODE_ASYNC,
 			screen->root, XCB_NONE, get_timestamp());
-	xcb_flush(conn);
+	XCB_FLUSH(conn);
 
 	PDEBUG("mode now : %d\n", get_mode());
 }
@@ -3245,7 +3282,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 	}
 
 	xcb_ungrab_pointer(conn, get_timestamp());
-	xcb_flush(conn);	/* Important! */
+	XCB_FLUSH(conn);	/* Important! */
 
 	set_mode(mode_nothing);
 	PDEBUG("mode now = %d\n", get_mode());
@@ -3644,6 +3681,8 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		wc.stackmode = e->stack_mode;
 		wc.borderwidth = e->border_width;
 
+		PDEBUG("configure_request: 0x%x, %d, %d, %d x %d, %d\n",
+				e->window, wc.x, wc.y, wc.width, wc.height, e->value_mask);
 		configure_win(e->window,
 				e->value_mask & ~XCB_CONFIG_WINDOW_BORDER_WIDTH, wc);
 		return;
@@ -3666,7 +3705,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
 			geometry.height = e->height;
 
-		apply_gravity(client);
+		apply_gravity(client, &geometry);
 		/* Check if window fits on screen after resizing. */
 		update_geometry(client, &geometry);
 	}
@@ -4111,7 +4150,6 @@ int main(int argc, char **argv)
 	conn = xcb_connect(NULL, &screen_number);
 	if (xcb_connection_has_error(conn)) {
 		perror("xcb_connect");
-		xcb_disconnect(conn);
 		exit(1);
 	}
 
@@ -4200,7 +4238,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	xcb_flush(conn);
+	XCB_FLUSH(conn);
 	set_input_focus(XCB_WINDOW_NONE);
 	/* Loop over events. */
 	events();
@@ -4208,10 +4246,10 @@ int main(int argc, char **argv)
 	/* Die gracefully. */
 	cleanup(sigcode);
 }
+
 void set_input_focus(xcb_window_t win)
 {
 	xcb_query_pointer_reply_t *pointer;
-	client_t *client;
 
 	if (win == XCB_WINDOW_NONE) {
 		pointer = xcb_query_pointer_reply(conn,
@@ -4221,15 +4259,12 @@ void set_input_focus(xcb_window_t win)
 			destroy(pointer);
 		}
 	}
-	if ((client = find_clientp(win))) {
-		set_focus(client);
-	}
+	set_focus(find_clientp(win));
 }
 
-void apply_gravity(client_t *client)
+/* apply client's gravity to given geometry */
+void apply_gravity(client_t *client, xcb_rectangle_t* geometry)
 {
-	xcb_rectangle_t *geometry = &(client->geometry);
-
 	if (client->hints.flags & XCB_ICCCM_SIZE_HINT_P_WIN_GRAVITY) {
 		switch (client->hints.win_gravity) {
 			case XCB_GRAVITY_STATIC:

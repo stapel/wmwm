@@ -84,6 +84,9 @@
 /* Check here for user configurable parts: */
 #include "config.h"
 
+#define PERROR(Args...) \
+	do { fprintf(stderr, "ERROR mcwm: "); fprintf(stderr, ##Args); } while(0)
+
 #ifdef DEBUG
 #define PDEBUG(Args...) \
 	do { fprintf(stderr, "mcwm: "); fprintf(stderr, ##Args); } while(0)
@@ -527,12 +530,6 @@ static xcb_timestamp_t get_timestamp() { return current_time; }
 static void set_timestamp(xcb_timestamp_t t) { current_time = t; }
 static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME) current_time = t; }
 
-void XCB_FLUSH(xcb_connection_t *conn)
-{
-	xcb_flush(conn);
-	PDEBUG("xcb_flush()\n");
-}
-
 /*
  * Update client's window's atoms
  */
@@ -621,7 +618,7 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
 			sizeof(xcb_keycode_t));
 
 	if (! keycodes.keycodes) {
-		fprintf(stderr, "Out of memory.\n");
+		PERROR("Out of memory.\n");
 		destroy(reply);
 		return keycodes;
 	}
@@ -894,7 +891,7 @@ void change_workspace(uint32_t ws)
 			set_default_events(client);
 		}
 	}
-	XCB_FLUSH(conn);
+	xcb_flush(conn);
 	/* set focus on the window under the mouse */
 	set_input_focus(XCB_WINDOW_NONE);
 
@@ -956,8 +953,7 @@ uint32_t getcolor(const char *colstr)
 	col_reply = xcb_alloc_named_color_reply(conn, colcookie, &error);
 
 	if (error || col_reply == NULL) {
-		fprintf(stderr, "mcwm: Couldn't get pixel value for color %s. Exiting.\n",
-				colstr);
+		PERROR("Couldn't get pixel value for color %s. Exiting.\n", colstr);
 		print_x_error(error);
 		destroy(error);
 		cleanup(1);
@@ -1137,7 +1133,7 @@ void new_win(xcb_window_t win)
 	xcb_rectangle_t geometry = client->geometry;
 
 	if (! client) {
-		fprintf(stderr, "mcwm: Couldn't set up window. Out of memory.\n");
+		PERROR("Couldn't set up window. Out of memory.\n");
 		return;
 	}
 
@@ -1331,13 +1327,13 @@ client_t *create_client(xcb_window_t win)
 	item = additem(&winlist);
 
 	if (! item) {
-		fprintf(stderr, "create_client: Out of memory.\n");
+		PERROR("create_client: Out of memory.\n");
 		return NULL;
 	}
 
 	client = calloc(1, sizeof(client_t));
 	if (! client) {
-		fprintf(stderr, "create_client: Out of memory.\n");
+		PERROR("create_client: Out of memory.\n");
 		return NULL;
 	}
 
@@ -1435,7 +1431,7 @@ xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym, xcb_key_symbols_t * keysyms
 	/* We only use the first keysymbol, even if there are more. */
 	keyp = xcb_key_symbols_get_keycode(keysyms, keysym);
 	if (! keyp) {
-		fprintf(stderr, "mcwm: Couldn't look up key. Exiting.\n");
+		PERROR("mcwm: Couldn't look up key. Exiting.\n");
 		exit(1);
 	}
 
@@ -1469,9 +1465,7 @@ bool setup_keys(void)
 	modkeys = get_modkeys(MODKEY);
 
 	if (0 == modkeys.len) {
-		fprintf(stderr,
-				"We couldn't find any keycodes to our main modifier "
-				"key! \n");
+		PERROR("We couldn't find any keycodes to our main modifierkey! \n");
 		return false;
 	}
 
@@ -1508,7 +1502,7 @@ bool setup_keys(void)
 	} /* for */
 
 	/* Need this to take effect NOW! */
-	XCB_FLUSH(conn);
+	xcb_flush(conn);
 
 	/* Get rid of the key symbols table. */
 	xcb_key_symbols_free(keysyms);
@@ -1623,8 +1617,7 @@ bool setup_screen(void)
 				NULL);
 
 		if (! attr) {
-			fprintf(stderr, "Couldn't get attributes for window %d.",
-					children[i]);
+			PERROR("Couldn't get attributes for window %d.", children[i]);
 			continue;
 		}
 
@@ -1827,13 +1820,13 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 	xcb_randr_get_output_info_cookie_t* ocookie;
 
 	if (len < 1) {
-		fprintf(stderr, "No outputs (%d) at all, what should we do now?\n",len);
+		PERROR("No outputs (%d) at all, what should we do now?\n", len);
 		return;
 	}
 
 	ocookie = calloc(len, sizeof(xcb_randr_get_output_info_cookie_t));
 	if (ocookie == NULL) {
-		fprintf(stderr, "Out of memory.\n");
+		PERROR("Out of memory.\n");
 		cleanup(1);
 	}
 
@@ -2963,9 +2956,11 @@ void events(void)
 	/* Get the file descriptor so we can do select() on it. */
 	fd = xcb_get_file_descriptor(conn);
 	if (fd == -1) {
-		fprintf(stderr, "Could not connect to xcb-fd\n");
+		PERROR("Could not connect to xcb-fd\n");
 		cleanup(1);
 	}
+
+	xcb_flush(conn);
 
 	for (sigcode = 0; sigcode == 0;) {
 		/*
@@ -2983,10 +2978,10 @@ void events(void)
 			/* We received a signal. Break out of loop. */
 			if (errno == EINTR)
 				break;
-
 			perror("mcwm select");
 			cleanup(1);
 		}
+
 		int count = 0;
 		while ((ev = xcb_poll_for_event(conn))) {
 			++count;
@@ -2996,6 +2991,7 @@ void events(void)
 					response_type,
 					handler[response_type] ? 1 : 0);
 
+			/* check for RANDR, SHAPE */
 			if (randrbase != -1 && response_type ==
 						(randrbase + XCB_RANDR_SCREEN_CHANGE_NOTIFY)) {
 				PDEBUG("RANDR screen change notify. Checking outputs.\n");
@@ -3011,9 +3007,8 @@ void events(void)
 						sev->affected_window, sev->shaped);
 				if (sev->shaped) {
 					client_t* client = find_client(sev->affected_window);
-					if (client) {
+					if (client)
 						set_shape(client);
-					}
 				}
 			} else if (handler[response_type]) {
 				handler[response_type](ev);
@@ -3025,12 +3020,10 @@ void events(void)
 		 * Check if we have an unrecoverable connection error,
 		 * like a disconnected X server.
 		 */
-		if (xcb_connection_has_error(conn)) {
+		if (xcb_connection_has_error(conn))
 			cleanup(1);
-		}
 		if (count)
-			XCB_FLUSH(conn);
-		PDEBUG("XXX %d events XXX\n", count);
+			xcb_flush(conn);
 	}
 	PDEBUG("got signal, bailing out!");
 }
@@ -3040,7 +3033,7 @@ void events(void)
  */
 void print_x_error(xcb_generic_error_t *e)
 {
-	fprintf(stderr, "mcwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
+	PERROR("mcwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
 		xcb_event_get_error_label(e->error_code),
 		xcb_event_get_request_label(e->major_code),
 		e->error_code,
@@ -3061,13 +3054,13 @@ void handle_map_request(xcb_generic_event_t* ev)
 {
 	xcb_map_request_event_t *e;
 	e = (xcb_map_request_event_t *) ev;
-
 	new_win(e->window);
 }
 
 void handle_property_notify(xcb_generic_event_t *ev)
 {
-	const xcb_property_notify_event_t* e = (xcb_property_notify_event_t*)ev;
+	const xcb_property_notify_event_t* e =
+	   	(xcb_property_notify_event_t*)ev;
 	client_t *client = find_client(e->window);
 
 	update_timestamp(e->time);
@@ -3113,11 +3106,6 @@ void handle_button_press(xcb_generic_event_t* ev)
 	xcb_button_press_event_t *e = (xcb_button_press_event_t *) ev;
 
 	update_timestamp(e->time);
-
-//	PDEBUG("Button %d pressed in window 0x%x, subwindow 0x%x "
-//			"coordinates (%d,%d)\n",
-//			e->detail, e->event, e->child, e->event_x,
-//			e->event_y);
 
 	/* check if the button is awaited */
 	switch (e->detail) {
@@ -3212,7 +3200,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 			XCB_GRAB_MODE_ASYNC,
 			XCB_GRAB_MODE_ASYNC,
 			screen->root, XCB_NONE, get_timestamp());
-	XCB_FLUSH(conn);
+	xcb_flush(conn);
 
 	PDEBUG("mode now : %d\n", get_mode());
 }
@@ -3229,9 +3217,8 @@ void handle_motion_notify(xcb_generic_event_t *ev)
 
 	update_timestamp(e->time);
 
-	if (! focuswin || focuswin->fullscreen) {
+	if (! focuswin || focuswin->fullscreen)
 		return;
-	}
 
 	/*
 	 * This is not really a real notify, but just a hint that
@@ -3282,7 +3269,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 	}
 
 	xcb_ungrab_pointer(conn, get_timestamp());
-	XCB_FLUSH(conn);	/* Important! */
+	xcb_flush(conn);	/* Important! */
 
 	set_mode(mode_nothing);
 	PDEBUG("mode now = %d\n", get_mode());
@@ -3308,9 +3295,6 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	update_timestamp(e->time);
 
-	PDEBUG("key_press: Key %d pressed (state: %d).\n", e->detail, e->state);
-
-	/* XXX * this might be superfluous as we only grab wanted keys */
 	for (i = KEY_F; i < KEY_MAX; i++) {
 		if (keys[i].keycode && e->detail == keys[i].keycode) {
 			key = i;
@@ -3318,14 +3302,14 @@ void handle_key_press(xcb_generic_event_t *ev)
 		}
 	}
 
-	if (is_mode(mode_tab) && key != KEY_TAB) {
-		/* First finish tabbing around. Then deal with the next key. */
+	/* First finish tabbing around. Then deal with the next key. */
+	if (is_mode(mode_tab) && key != KEY_TAB)
 		finish_tab();
-	}
+
 
 	/* TODO impossible -> grabbed keys ? */
 	if (key == KEY_MAX) {
-		PDEBUG("key_press: Unknown key pressed.\n");
+		PERROR("Unknown key pressed.\n");
 
 		/*
 		 * We don't know what to do with this key. Send this key press
@@ -3336,10 +3320,15 @@ void handle_key_press(xcb_generic_event_t *ev)
 		return;
 	}
 
-	if (e->state & CONTROLMOD) {
-		/* META+CTRL */
-		if (e->state & SHIFTMOD) {
-			/* META+CTRL+SHIFT */
+	switch (e->state) {
+		/* META */
+		case MODKEY:
+			if (key == KEY_TAB)	/* tab */
+				focus_next();
+			break;
+
+		/* CTRL + META + SHIFT */
+		case CONTROLMOD | MODKEY | SHIFTMOD:
 			switch (key) {
 				case KEY_H:		/* left */
 					resize_step(focuswin, step_left);
@@ -3358,14 +3347,12 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				default:
-					PDEBUG("got key I didn't register for 0: (%d)\n", key);
-					xcb_send_event(conn, false,
-							XCB_SEND_EVENT_DEST_ITEM_FOCUS,
-							XCB_EVENT_MASK_NO_EVENT, (char *) e);
 					break;
 			}
-		} else {
-			/* META+CTRL without SHIFT */
+			break;
+
+		/* CTRL + META */
+		case CONTROLMOD | MODKEY:
 			switch (key) {
 				case KEY_RET:		/* return */
 					start(conf.terminal);
@@ -3477,58 +3464,29 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 				case KEY_ICONIFY:
 					if (conf.allowicons) {
+						/* hide and remove from workspace list */
 						set_hidden_events(focuswin);
 						hide(focuswin);
 						set_workspace(focuswin, WORKSPACE_NONE);
 					}
 					break;
 				default:
-					PDEBUG("got key I didn't register for 1: (%d)\n", key);
-					xcb_send_event(conn, false,
-							XCB_SEND_EVENT_DEST_ITEM_FOCUS,
-							XCB_EVENT_MASK_NO_EVENT, (char *) e);
 					break;
-			}					/* switch unshifted */
-		}
-	} else {
-		/* only META */
-		if (key == KEY_TAB) {	/* tab */
-			PDEBUG("key_press: MOD+TAB\n");
-			focus_next();
-		} else {
-			PDEBUG("got key I didn't register for 2: (%d)\n", key);
-			xcb_send_event(conn, false, XCB_SEND_EVENT_DEST_ITEM_FOCUS,
-					XCB_EVENT_MASK_NO_EVENT, (char *) e);
-		}
+			} /* switch CTRL + META */
+		default:
+			break;
 	}
 }
 
 void handle_key_release(xcb_generic_event_t *ev)
 {
 	xcb_key_release_event_t *e = (xcb_key_release_event_t *) ev;
-	unsigned i;
 
 	update_timestamp(e->time);
 
-	PDEBUG("key_release: Key %d released (state %d).\n",
-			e->detail, e->state);
-
-	if (is_mode(mode_tab)) {
-		/*
-		 * Check if it's the that was released was a key
-		 * generating the MODKEY mask.
-		 */
-		for (i = 0; i < modkeys.len; i++) {
-			PDEBUG("key_release: Is it %d?\n", modkeys.keycodes[i]);
-
-			if (e->detail == modkeys.keycodes[i]) {
-				finish_tab();
-
-				/* Get out of for... */
-				break;
-			}
-		}			/* for keycodes. */
-	}				/* if tabbing. */
+	/* if we were tabbing, finish */
+	if (is_mode(mode_tab))
+		finish_tab();
 }
 
 void handle_enter_notify(xcb_generic_event_t *ev)
@@ -3556,14 +3514,17 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	 */
 
 	if (!(e->mode == XCB_NOTIFY_MODE_NORMAL
-				|| e->mode != XCB_NOTIFY_MODE_UNGRAB)) {
+				|| e->mode != XCB_NOTIFY_MODE_UNGRAB))
 		return;
-	}
 
 	if (e->event == screen->root) {
 		/* root window entered */
-		if (! focuswin)
-			set_focus(NULL); /* lost focus */
+		if (! focuswin) {
+			/* No window has the focus, it might be reverted to 0x0,
+			 * so we set it on under a window the cursor.
+			 */
+			set_input_focus(XCB_WINDOW_NONE);
+		}
 		return;
 	}
 
@@ -3571,15 +3532,6 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	if (! client)
 		return;
 
-
-#ifdef DEBUG
-	/* TODO * why is that */
-	if (e->detail == XCB_NOTIFY_DETAIL_NONLINEAR_VIRTUAL) {
-		PDEBUG("> root: 0x%x event: 0x%x child: 0x%x state: %d\n",
-				e->root, e->event, e->child, e->state);
-		//break;
-	}
-#endif
 	/*
 	 * If we're entering the same window we focus now,
 	 * then don't bother focusing.
@@ -3672,7 +3624,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		/*
 		 * Unmapped window. Just pass all options except border width.
 		 */
-		/* ignore hints */
+
 		wc.x = e->x;
 		wc.y = e->y;
 		wc.width = e->width;
@@ -3714,8 +3666,8 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		int i = 0;
 		uint32_t values[2];
 		if (mask & XCB_CONFIG_WINDOW_SIBLING) {
-			client_t *sibling = find_client(e->sibling);
 			PDEBUG("configure request : sibling 0x%x\n", e->sibling);
+			client_t *sibling = find_client(e->sibling);
 			/* replace sibling with its frame if it's ours */
 			values[i++] = sibling ? sibling->frame : e->sibling;
 		}
@@ -3800,18 +3752,16 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	/* close window */
 	if (e->type == ewmh->_NET_CLOSE_WINDOW) {
 		PDEBUG("client_message: net_close_window\n");
-		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) { // direct user, pager
+		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER)
 			delete_win(client);
-		}
 		return;
 	}
 
 	/* set active window */
 	if (e->type == ewmh->_NET_ACTIVE_WINDOW) {
 		PDEBUG("client_message: net_active_window\n");
-		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) { // direct user, pager
+		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER)
 			set_focus(client);
-		}
 		return;
 	}
 	/* XXX make this a little nicer */
@@ -3911,16 +3861,15 @@ void handle_mapping_notify(xcb_generic_event_t *ev)
 	PDEBUG("mapping_notify: req: %d count: %d first: %d\n", e->request,
 			e->count, e->first_keycode);
 	if (e->request != XCB_MAPPING_MODIFIER
-			&& e->request != XCB_MAPPING_KEYBOARD) {
+			&& e->request != XCB_MAPPING_KEYBOARD)
 		return;
-	}
 
 	/* Forget old key bindings. */
 	xcb_ungrab_key(conn, XCB_GRAB_ANY, screen->root, XCB_MOD_MASK_ANY);
 
 	/* Use the new ones. */
 	if (! setup_keys()) {
-		fprintf(stderr, "mcwm: Couldn't set up keycodes. Exiting.");
+		PERROR("mcwm: Couldn't set up keycodes. Exiting.");
 		cleanup(1);
 	}
 }
@@ -3950,7 +3899,7 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 	if (! client)
 		return;
 
-	/* we await that unmap, do nothing */
+	/* we expect and ignore that unmap */
 	if (client->ignore_unmap) {
 		client->ignore_unmap = false;
 		return;
@@ -4039,14 +3988,16 @@ char* get_atomname(xcb_atom_t atom)
 	an_rep = xcb_get_atom_name_reply(conn,
 			xcb_get_atom_name_unchecked(conn, atom), NULL);
 
-	if (! an_rep) {
+	if (! an_rep)
 		return NULL;
-	}
-	if (name) destroy(name);
+
+	if (name)
+		destroy(name);
 	name = calloc(xcb_get_atom_name_name_length(an_rep) + 1,
 			sizeof(char));
 	strncpy(name, xcb_get_atom_name_name(an_rep),
 			xcb_get_atom_name_name_length(an_rep));
+
 	destroy(an_rep);
 	return name;
 }
@@ -4171,13 +4122,12 @@ int main(int argc, char **argv)
 	/* Find our screen. */
 
 	iter = xcb_setup_roots_iterator(xcb_get_setup(conn));
-	for (int i = 0; i < screen_number; ++i) {
+	for (int i = 0; i < screen_number; ++i)
 		xcb_screen_next(&iter);
-	}
 
 	screen = iter.data;
 	if (! screen) {
-		fprintf(stderr, "mcwm: Can't get the current screen. Exiting.\n");
+		PERROR("Can't get the current screen. Exiting.\n");
 		xcb_disconnect(conn);
 		exit(1);
 	}
@@ -4194,7 +4144,7 @@ int main(int argc, char **argv)
 
 	/* setup EWMH */
 	if (! setup_ewmh()) {
-		fprintf(stderr, "mcwm: Failed to initialize xcb-ewmh. Exiting.\n");
+		PERROR("Failed to initialize xcb-ewmh. Exiting.\n");
 		cleanup(1);
 	}
 
@@ -4206,14 +4156,14 @@ int main(int argc, char **argv)
 
 	/* Loop over all clients and set up stuff. */
 	if (! setup_screen()) {
-		fprintf(stderr, "mcwm: Failed to initialize windows. Exiting.\n");
+		PERROR("Failed to initialize windows. Exiting.\n");
 		xcb_disconnect(conn);
 		exit(1);
 	}
 
 	/* Set up key bindings. */
 	if (! setup_keys()) {
-		fprintf(stderr, "mcwm: Couldn't set up keycodes. Exiting.");
+		PERROR("Couldn't set up keycodes. Exiting.");
 		cleanup(1);
 	}
 
@@ -4245,7 +4195,7 @@ int main(int argc, char **argv)
 	error = xcb_request_check(conn, cookie);
 
 	if (error) {
-		fprintf(stderr, "mcwm: Can't get SUBSTRUCTURE REDIRECT. "
+		PERROR("Can't get SUBSTRUCTURE REDIRECT. "
 				"Another window manager running? Exiting.\n");
 		print_x_error(error);
 		destroy(error);
@@ -4253,8 +4203,9 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	XCB_FLUSH(conn);
+	xcb_flush(conn);
 	set_input_focus(XCB_WINDOW_NONE);
+
 	/* Loop over events. */
 	events();
 
@@ -4280,40 +4231,42 @@ void set_input_focus(xcb_window_t win)
 /* apply client's gravity to given geometry */
 void apply_gravity(client_t *client, xcb_rectangle_t* geometry)
 {
+	const int border = client->fullscreen ? 0 : conf.borderwidth;
+
 	if (client->hints.flags & XCB_ICCCM_SIZE_HINT_P_WIN_GRAVITY) {
 		switch (client->hints.win_gravity) {
 			case XCB_GRAVITY_STATIC:
 				break;
 			case XCB_GRAVITY_NORTH_WEST:
-				geometry->x -= conf.borderwidth;
-				geometry->y -= conf.borderwidth;
+				geometry->x -= border;
+				geometry->y -= border;
 				break;
 			case XCB_GRAVITY_NORTH:
 				geometry->x += geometry->width / 2;
-				geometry->y -= conf.borderwidth;
+				geometry->y -= border;
 				break;
 			case XCB_GRAVITY_NORTH_EAST:
-				geometry->x += geometry->width + conf.borderwidth;
-				geometry->y -= conf.borderwidth;
+				geometry->x += geometry->width + border;
+				geometry->y -= border;
 				break;
 			case XCB_GRAVITY_EAST:
-				geometry->x += geometry->width + conf.borderwidth;
+				geometry->x += geometry->width + border;
 				geometry->y += geometry->height / 2;
 				break;
 			case XCB_GRAVITY_SOUTH_EAST:
-				geometry->x += geometry->width + conf.borderwidth;
-				geometry->y += geometry->height + conf.borderwidth;
+				geometry->x += geometry->width + border;
+				geometry->y += geometry->height + border;
 				break;
 			case XCB_GRAVITY_SOUTH:
 				geometry->x += geometry->width / 2;
-				geometry->y += geometry->height + conf.borderwidth;
+				geometry->y += geometry->height + border;
 				break;
 			case XCB_GRAVITY_SOUTH_WEST:
-				geometry->x -= conf.borderwidth;
-				geometry->y += geometry->height / 2 + conf.borderwidth;
+				geometry->x -= border;
+				geometry->y += geometry->height / 2 + border;
 				break;
 			case XCB_GRAVITY_WEST:
-				geometry->x -= conf.borderwidth;
+				geometry->x -= border;
 				geometry->y += geometry->height / 2;
 				break;
 			case XCB_GRAVITY_CENTER:

@@ -25,6 +25,7 @@
 
 /* XXX THINGS TODO XXX
 !* _NET_MOVERESIZE_WINDOW
+ * handle_client_message
  * MWM hints
  * aspect normal_hints
 !* focus still can be lost (e.g. wine)
@@ -236,7 +237,7 @@ typedef struct client {
 	bool vertmaxed;					/* Vertically maximized? XXX not fullscreen at all */
 	bool fullscreen;				/* Totally maximized? XXX aka fullscreen*/
 	bool fixed;						/* Visible on all workspaces? */
-
+	bool hidden;
 	int killed;						/* number of times we sent delete_window message */
 
 	bool ignore_unmap;				/* unmap_notification we shall ignore */
@@ -271,7 +272,7 @@ int screen_number;
 xcb_timestamp_t	current_time;	/* latest timestamp XXX */
 
 xcb_ewmh_connection_t *ewmh;		/* EWMH Connection */
-//xcb_atom_t ewmh_1_4_NET_WM_STATE_FOCUSED;
+xcb_atom_t ewmh_1_4_NET_WM_STATE_FOCUSED;
 
 int randrbase;					/* Beginning of RANDR extension events. */
 int shapebase;					/* Beginning of SHAPE extension events. */
@@ -537,7 +538,7 @@ void XCB_FLUSH(xcb_connection_t *conn)
  */
 static void ewmh_update_state(client_t* client)
 {
-	xcb_atom_t atoms[4];
+	xcb_atom_t atoms[5];
 	uint32_t i = 0;
 
 	if (! client)
@@ -549,8 +550,10 @@ static void ewmh_update_state(client_t* client)
 		atoms[i++] = ewmh->_NET_WM_STATE_MAXIMIZED_VERT;
 	if (client->fixed)
 		atoms[i++] = ewmh->_NET_WM_STATE_STICKY;
-//	if (client == focuswin)
-//		atoms[i++] = ewmh_1_4_NET_WM_STATE_FOCUSED;
+	if (client->hidden)
+		atoms[i++] = ewmh->_NET_WM_STATE_HIDDEN;
+	if (client == focuswin)
+		atoms[i++] = ewmh_1_4_NET_WM_STATE_FOCUSED;
 
 	if (i > 0) {
 		xcb_ewmh_set_wm_state(ewmh, client->id, i, atoms);
@@ -1354,6 +1357,7 @@ client_t *create_client(xcb_window_t win)
 
 	client->take_focus = false;
 	client->use_delete = false;
+	client->hidden = false;
 
 	client->allow_focus = true;
 	client->ignore_unmap = false;
@@ -1540,7 +1544,7 @@ bool setup_ewmh(void)
 		return false;
 	}
 
-//	ewmh_1_4_NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
+	ewmh_1_4_NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
 
 	ewmh_allowed_actions[0] = ewmh->_NET_WM_ACTION_MAXIMIZE_VERT;
 	ewmh_allowed_actions[1] = ewmh->_NET_WM_ACTION_FULLSCREEN;
@@ -1561,8 +1565,8 @@ bool setup_ewmh(void)
 		ewmh->_NET_WM_STATE_STICKY,			// option
 		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// option
 		ewmh->_NET_WM_STATE_FULLSCREEN,		// option
-//		ewmh->_NET_WM_STATE_HIDDEN,			// option
-//		ewmh_1_4_NET_WM_STATE_FOCUSED,		// option
+		ewmh->_NET_WM_STATE_HIDDEN,			// option
+		ewmh_1_4_NET_WM_STATE_FOCUSED,		// option
 
 		ewmh->_NET_WM_ALLOWED_ACTIONS,		// window
 		ewmh->_NET_WM_ACTION_MAXIMIZE_VERT,	// option
@@ -2171,10 +2175,11 @@ void unset_focus()
 	if (! focuswin)
 		return;
 
-	client_t *c = focuswin;
+	client_t *client = focuswin;
 	focuswin = NULL;
+	ewmh_update_state(client);
 	/* Set new border color. */
-	update_bordercolor(c);
+	update_bordercolor(client);
 }
 
 /*
@@ -2246,10 +2251,16 @@ void set_focus(client_t *client)
 		/* install default colormap */
 		xcb_install_colormap(conn, screen->default_colormap);
 
-		focuswin = NULL;
 		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_POINTER_ROOT,
 				XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
+
+		/* mark current focuswin as no longer focused */
+		if (focuswin) {
+			client = focuswin;
+			focuswin = NULL;
+			ewmh_update_state(client);
+		}
 
 		return;
 	}
@@ -2286,6 +2297,9 @@ void set_focus(client_t *client)
 
 	/* set active window ewmh-hint */
 	xcb_ewmh_set_active_window(ewmh, screen_number, client->id);
+
+	/* mark window as focuswin etc. */
+	ewmh_update_state(client);
 }
 
 int start(char *program)
@@ -2615,6 +2629,9 @@ void show(client_t *client)
 	xcb_map_window(conn, client->frame);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
+
+	client->hidden = false;
+	ewmh_update_state(client);
 }
 
 /* send window into iconic mode and hide */
@@ -2637,6 +2654,9 @@ void hide(client_t *client)
 	xcb_unmap_window(conn, client->id);
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, client->id,
 			icccm.wm_state, icccm.wm_state, 32, 2, data);
+
+	client->hidden = true;
+	ewmh_update_state(client);
 }
 
 /* Forget everything about client client. */
@@ -2812,11 +2832,7 @@ void send_configuration(client_t *client)
 
 void send_client_message(xcb_window_t window, xcb_atom_t atom)
 {
-#if DEBUG
-	char* aname = get_atomname(atom);
-	PDEBUG("xcb_send_event(%s) to 0x%x\n", aname, window);
-	destroy(aname);
-#endif
+	PDEBUG("xcb_send_event(%s) to 0x%x\n", get_atomname(atom), window);
 
 	xcb_client_message_event_t ev = {
 		.response_type = XCB_CLIENT_MESSAGE,
@@ -3058,16 +3074,7 @@ void handle_property_notify(xcb_generic_event_t *ev)
 	if (! client)
 		return;
 
-#ifdef DEBUG
-	char* name = get_atomname(e->atom);
-
-	if (! name) {
-		PDEBUG("0x%x notifies changed atom (%d)\n", e->window, e->atom);
-	} else {
-		PDEBUG("0x%x notifies changed atom (%d: %s)\n", e->window, e->atom, name);
-		destroy(name);
-	}
-#endif
+	PDEBUG("0x%x notifies changed atom (%d: %s)\n", e->window, e->atom, get_atomname(e->atom));
 
 	switch (e->atom) {
 		case XCB_ATOM_WM_HINTS:
@@ -3740,12 +3747,8 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	/* We don't act on any other client messages from unhandled windows */
 	if (! client) {
-#if DEBUG
-		char* aname = get_atomname(e->type);
 		PDEBUG("client_message: unknown window (0x%x), type: %s (%d)!\n",
-				e->window, aname, e->type);
-		destroy(aname);
-#endif
+				e->window, get_atomname(e->type), e->type);
 		return;
 	}
 
@@ -3775,10 +3778,9 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		}
 		return;
 	}
+	/* XXX make this a little nicer */
 	if (e->type == ewmh->_NET_WM_STATE) {
 		PDEBUG("client_message: net_wm_state\n");
-		//		bool max_h	= false;
-		//		bool hide	= false;
 		bool max_v	= false;
 		bool fs		= false;
 
@@ -3792,17 +3794,17 @@ static void handle_client_message(xcb_generic_event_t *ev)
 				max_v = true;
 //			else if (atom == ewmh->_NET_WM_STATE_MAXIMIZE_HORZ) // XXX unimpl
 //				max_h = true;
-			//			else if (atom == ewmh->_NET_WM_STATE_HIDDEN)		// TODO
-			//				hide = true;
+//			else if (atom == ewmh->_NET_WM_STATE_HIDDEN)		// will not allow
+//				hide = true;
 #ifdef DEBUG
 			else {
-				if (i == 2 && atom == 0)
+				if (i == 2 && atom == 0) /* ??? */
 					break;
-				PDEBUG("Unknown _NET_WM_STATE demanded! (%d)\n", atom);
+				PDEBUG("Unknown _NET_WM_STATE demanded! (%s (%d))\n", get_atomname(atom), atom);
 			}
 #endif
 		}
-		// TODO logic
+		// TODO logic XXX
 		// only one wins today
 		switch (action) {
 			case XCB_EWMH_WM_STATE_ADD:
@@ -3998,7 +4000,7 @@ xcb_atom_t get_atom(char *atom_name)
  */
 char* get_atomname(xcb_atom_t atom)
 {
-	char* name;
+	static char* name = NULL;
 	xcb_get_atom_name_reply_t *an_rep;
 
 	an_rep = xcb_get_atom_name_reply(conn,
@@ -4007,12 +4009,12 @@ char* get_atomname(xcb_atom_t atom)
 	if (! an_rep) {
 		return NULL;
 	}
+	if (name) destroy(name);
 	name = calloc(xcb_get_atom_name_name_length(an_rep) + 1,
 			sizeof(char));
 	strncpy(name, xcb_get_atom_name_name(an_rep),
 			xcb_get_atom_name_name_length(an_rep));
 	destroy(an_rep);
-
 	return name;
 }
 #endif

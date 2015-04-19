@@ -24,7 +24,9 @@
  */
 
 /* XXX THINGS TODO XXX
+!* _NET_MOVERESIZE_WINDOW
  * MWM hints
+ * aspect normal_hints
 !* focus still can be lost (e.g. wine)
    wine e.g. has allow_focus == false! so no falling back if killed ? XXX
    THIS HAPPENS WHEN THE CLIENT SETS FOCUS BY ITSELF AND
@@ -33,7 +35,6 @@
  * function
 !* Error handling
 ?* LVDS is seen as clone of VGA-0? look at special-log
-!* make checks if hints actually exist (not to use inc_width etc...)
  * NET_WM_STATE client message
  * configurewin (don't like that somehow)
  * key handling, automate a little further, it looks really ugly
@@ -110,6 +111,21 @@ typedef enum {
 	step_left 	= 1 << 2,
 	step_right 	= 1 << 3
 } step_direction_t;
+
+/*
+typedef enum {
+	sh_us_position	= XCB_ICCCM_SIZE_HINT_US_POSITION,
+	sh_us_size		= XCB_ICCCM_SIZE_HINT_US_SIZE,
+	sh_position		= XCB_ICCCM_SIZE_HINT_P_POSITION,
+	sh_size			= XCB_ICCCM_SIZE_HINT_P_SIZE,
+	sh_min_size		= XCB_ICCCM_SIZE_HINT_P_MIN_SIZE,
+	sh_max_size		= XCB_ICCCM_SIZE_HINT_P_MAX_SIZE,
+	sh_resize_inc	= XCB_ICCCM_SIZE_HINT_P_RESIZE_INC,
+	sh_aspect		= XCB_ICCCM_SIZE_HINT_P_ASPECT,
+	sh_base_size	= XCB_ICCCM_SIZE_HINT_BASE_SIZE,
+	sh_win_gravity	= XCB_ICCCM_SIZE_HINT_P_WIN_GRAVITY
+} size_hint_t;
+*/
 
 /* Number of workspaces. */
 #define WORKSPACES 10u
@@ -482,7 +498,8 @@ static monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 								  uint32_t x, uint32_t y, uint16_t width,
 								  uint16_t height);
 
-static int update_client_geometry(client_t *client, const xcb_rectangle_t *geometry);
+static void apply_gravity(client_t *client)
+static int update_geometry(client_t *client, const xcb_rectangle_t *geometry);
 
 static client_t *find_client(xcb_drawable_t win);
 static client_t *find_clientp(xcb_drawable_t win);
@@ -673,7 +690,7 @@ void arrangewindows(void)
 	 */
 	for (item = winlist; item; item = item->next) {
 		client = item->data;
-		update_client_geometry(client, NULL);
+		update_geometry(client, NULL);
 	}
 }
 /*
@@ -947,7 +964,7 @@ uint32_t getcolor(const char *colstr)
 }
 
 
-int update_client_geometry(client_t *client,
+int update_geometry(client_t *client,
 		const xcb_rectangle_t *geometry)
 {
 	/* check if geometry changed */
@@ -1064,10 +1081,10 @@ out: ;
 	}
 
 	if (cm == 0 && fm == 0) {
-		PDEBUG("update_client_geometry: 0x%x not changed\n", client->id);
+		PDEBUG("update_geometry: 0x%x not changed\n", client->id);
 		return 0;
 	}
-	PDEBUG("update_client_geometry: changing 0x%x to %d,%d %dx%d\n",
+	PDEBUG("update_geometry: changing 0x%x to %d,%d %dx%d\n",
 			client->id,
 			geo.x,
 			geo.y,
@@ -1167,7 +1184,7 @@ void new_win(xcb_window_t win)
 		}
 	}
 
-	update_client_geometry(client, &geometry);
+	update_geometry(client, &geometry);
 
 	/* Show window on screen. */
 	set_default_events(client);
@@ -1356,6 +1373,9 @@ client_t *create_client(xcb_window_t win)
 	}
 	client->geometry_last = client->geometry;
 
+	/* XXX order of statements!
+	 * geometry, hints, update_gometry, attach_frame ...
+	 */
 	attach_frame(client);
 
 	if (ewmh_is_fullscreen(client)) {
@@ -1631,7 +1651,7 @@ bool setup_screen(void)
 			}
 
 			/* Fit window on physical screen. */
-			update_client_geometry(client, NULL);
+			update_geometry(client, NULL);
 
 			/* save individual colormap */
 			client->colormap = attr->colormap;
@@ -1921,7 +1941,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 								client->monitor->item->next->data;
 						}
 
-						update_client_geometry(client, NULL);
+						update_geometry(client, NULL);
 					}
 				} /* for */
 
@@ -1947,7 +1967,7 @@ void arrbymon(monitor_t *monitor)
 	for (item_t *item = winlist; item; item = item->next) {
 		client = item->data;
 		if (client->monitor == monitor) {
-			update_client_geometry(client, NULL);
+			update_geometry(client, NULL);
 		}
 	}							/* for */
 }
@@ -2342,7 +2362,7 @@ void resize_step(client_t *client, step_direction_t direction)
 			break;
 	}							/* switch direction */
 
-	if (! update_client_geometry(client, &geometry))
+	if (! update_geometry(client, &geometry))
 		return;
 
 	/* If this window was vertically maximized, remember that it isn't now. */
@@ -2363,7 +2383,7 @@ void mouse_move(client_t *client, int rel_x, int rel_y)
 {
 	xcb_rectangle_t geo = client->geometry;
 	geo.x = rel_x; geo.y = rel_y;
-	update_client_geometry(client, &geo);
+	update_geometry(client, &geo);
 }
 
 void mouse_resize(client_t *client, int rel_x, int rel_y)
@@ -2375,7 +2395,7 @@ void mouse_resize(client_t *client, int rel_x, int rel_y)
 	if (rel_y > geo.y)
 		geo.height = rel_y - geo.y;
 
-	if (! update_client_geometry(client, &geo))
+	if (! update_geometry(client, &geo))
 		return; // nothing changed
 
 	/* If this window was vertically maximized, remember that it isn't now. */
@@ -2425,7 +2445,7 @@ void move_step(client_t *client, step_direction_t direction)
 			break;
 	}							/* switch direction */
 
-	if (! update_client_geometry(client, &geo))
+	if (! update_geometry(client, &geo))
 		return;
 
 	/*
@@ -2481,7 +2501,7 @@ void unmax(client_t *client)
 
 	/* Restore geometry. */
 	client->fullscreen = client->vertmaxed = false;
-	update_client_geometry(client, &(client->geometry_last));
+	update_geometry(client, &(client->geometry_last));
 
 	set_borders(client->frame, conf.borderwidth);
 	ewmh_frame_extents(client->id, conf.borderwidth);
@@ -2520,7 +2540,7 @@ void toggle_fullscreen(client_t *client)
 	/* Remove borders. */
 	set_borders(client->frame, 0);
 	ewmh_frame_extents(client->id, 0);
-	update_client_geometry(client, &monitor);
+	update_geometry(client, &monitor);
 	ewmh_update_state(client);
 
 	raise_client(client);
@@ -2557,7 +2577,7 @@ void toggle_vertical(client_t *client)
 	client->vertmaxed = true;
 
 	/* Move to top of screen and resize. */
-	if (! update_client_geometry(client, &monitor))
+	if (! update_geometry(client, &monitor))
 		return;
 
 	/* Remember that this client is vertically maximized. */
@@ -2756,7 +2776,7 @@ void warp_focuswin(step_direction_t direction)
 	if (direction & step_down)
 		geo.y = mon.y + mon.height - (geo.height + conf.borderwidth * 2);
 
-	if (update_client_geometry(focuswin, &geo)) {
+	if (update_geometry(focuswin, &geo)) {
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
 				0, 0, 0, 0, pointx, pointy);
 	}
@@ -2816,7 +2836,7 @@ void prev_screen(void)
 	focuswin->monitor = item->data;
 
 	raise_client(focuswin);
-	update_client_geometry(focuswin, NULL);
+	update_geometry(focuswin, NULL);
 
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
 			0, 0, 0, 0, 0, 0);
@@ -2839,7 +2859,7 @@ void next_screen(void)
 	focuswin->monitor = item->data;
 
 	raise_client(focuswin);
-	update_client_geometry(focuswin, NULL);
+	update_geometry(focuswin, NULL);
 
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
 			0, 0, 0, 0, 0, 0);
@@ -3615,6 +3635,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		/*
 		 * Unmapped window. Just pass all options except border width.
 		 */
+		/* ignore hints */
 		wc.x = e->x;
 		wc.y = e->y;
 		wc.width = e->width;
@@ -3628,14 +3649,14 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		return;
 	}
 
-	xcb_rectangle_t mon;
-	xcb_rectangle_t geometry = client->geometry;
-
-	/* Find monitor position and size. */
-	get_monitor_geometry(client ? client->monitor : NULL, &mon);
-
 	/* Don't resize if maximized. */
 	if (! client->fullscreen) {
+		xcb_rectangle_t mon;
+		xcb_rectangle_t geometry = client->geometry;
+
+		/* Find monitor position and size. */
+		get_monitor_geometry(client ? client->monitor : NULL, &mon);
+
 		if (e->value_mask & XCB_CONFIG_WINDOW_X)
 			geometry.x = e->x;
 		if (e->value_mask & XCB_CONFIG_WINDOW_Y)
@@ -3645,8 +3666,9 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		if (e->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
 			geometry.height = e->height;
 
+		apply_gravity(client);
 		/* Check if window fits on screen after resizing. */
-		update_client_geometry(client, &geometry);
+		update_geometry(client, &geometry);
 	}
 
 	/* handle sibling/stacking order separatly (not that I want to do that) */
@@ -4201,5 +4223,53 @@ void set_input_focus(xcb_window_t win)
 	}
 	if ((client = find_clientp(win))) {
 		set_focus(client);
+	}
+}
+
+void apply_gravity(client_t *client)
+{
+	xcb_rectangle_t *geometry = &(client->geometry);
+
+	if (client->hints.flags & XCB_ICCCM_SIZE_HINT_P_WIN_GRAVITY) {
+		switch (client->hints.win_gravity) {
+			case XCB_GRAVITY_STATIC:
+				break;
+			case XCB_GRAVITY_NORTH_WEST:
+				geometry->x -= conf.borderwidth;
+				geometry->y -= conf.borderwidth;
+				break;
+			case XCB_GRAVITY_NORTH:
+				geometry->x += geometry->width / 2;
+				geometry->y -= conf.borderwidth;
+				break;
+			case XCB_GRAVITY_NORTH_EAST:
+				geometry->x += geometry->width + conf.borderwidth;
+				geometry->y -= conf.borderwidth;
+				break;
+			case XCB_GRAVITY_EAST:
+				geometry->x += geometry->width + conf.borderwidth;
+				geometry->y += geometry->height / 2;
+				break;
+			case XCB_GRAVITY_SOUTH_EAST:
+				geometry->x += geometry->width + conf.borderwidth;
+				geometry->y += geometry->height + conf.borderwidth;
+				break;
+			case XCB_GRAVITY_SOUTH:
+				geometry->x += geometry->width / 2;
+				geometry->y += geometry->height + conf.borderwidth;
+				break;
+			case XCB_GRAVITY_SOUTH_WEST:
+				geometry->x -= conf.borderwidth;
+				geometry->y += geometry->height / 2 + conf.borderwidth;
+				break;
+			case XCB_GRAVITY_WEST:
+				geometry->x -= conf.borderwidth;
+				geometry->y += geometry->height / 2;
+				break;
+			case XCB_GRAVITY_CENTER:
+				geometry->x += geometry->width / 2 ;
+				geometry->y += geometry->height / 2;
+				break;
+		}
 	}
 }

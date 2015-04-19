@@ -263,7 +263,7 @@ typedef struct winconf {
 /* Globals */
 
 int sigcode;					/* Signal code. Non-zero if we've been
-								 * interruped by a signal. */
+								 * interrupted by a signal. */
 xcb_connection_t *conn;			/* Connection to X server. */
 xcb_screen_t *screen;			/* Our current screen.  */
 int screen_number;
@@ -309,7 +309,7 @@ item_t *wslist[WORKSPACES] = {
 	NULL
 };
 
-/* Shortcut key type and initializiation. */
+/* Shortcut key type and initialization. */
 struct keys {
 	xcb_keysym_t keysym;
 	xcb_keycode_t keycode;
@@ -355,9 +355,9 @@ struct conf {
 	int borderwidth;			/* Do we draw borders? If so, how large? */
 	char *terminal;				/* Path to terminal to start. */
 	char *menu;					/* Path to menu to start. */
-	uint32_t focuscol;			/* Focused border colour. */
-	uint32_t unfocuscol;		/* Unfocused border colour.  */
-	uint32_t fixedcol;			/* Fixed windows border colour. */
+	uint32_t focuscol;			/* Focused border color. */
+	uint32_t unfocuscol;		/* Unfocused border color.  */
+	uint32_t fixedcol;			/* Fixed windows border color. */
 	bool allowicons;			/* Allow windows to be unmapped. */
 } conf;
 
@@ -375,7 +375,7 @@ struct icccm {
 
 static xcb_atom_t ewmh_allowed_actions[2] = { XCB_ATOM_NONE, XCB_ATOM_NONE };
 
-/* Functions declerations. */
+/* Functions declarations. */
 
 /* print out X error to stderr */
 static void print_x_error(xcb_generic_error_t *e);
@@ -398,13 +398,9 @@ static void handle_unmap_notify(xcb_generic_event_t*);
 static void handle_destroy_notify(xcb_generic_event_t*);
 static void handle_property_notify(xcb_generic_event_t*);
 static void handle_colormap_notify(xcb_generic_event_t*);
-#if 0
-static void handle_focus_in(xcb_generic_event_t*);
-#endif
 
 // RESPONSE_TYPE_MASK is uint_8t (and is only 0x1f, so little waste)
 static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
-	// 0 is error, maybe I should just use 0 instead of define XCB_NONE
 	[0]						= handle_error_event,
 	[XCB_MAP_REQUEST]		= handle_map_request,
 	[XCB_BUTTON_PRESS]		= handle_button_press,
@@ -420,9 +416,6 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 	[XCB_MAPPING_NOTIFY]	= handle_mapping_notify,
 	[XCB_UNMAP_NOTIFY]		= handle_unmap_notify,
 	[XCB_DESTROY_NOTIFY]	= handle_destroy_notify,
-#if 0
-	[XCB_FOCUS_IN]			= handle_focus_in,
-#endif
 	[XCB_PROPERTY_NOTIFY]	= handle_property_notify,
 	[XCB_COLORMAP_NOTIFY]	= handle_colormap_notify
 };
@@ -813,7 +806,7 @@ void set_workspace(client_t *client, uint32_t ws)
 			}
 		}
 
-		/* add if not hidden or allready */
+		/* add if not hidden or already */
 		if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
 			/* add to destined workspace */
 			if ((item = additem(&wslist[ws])) == NULL) {
@@ -891,7 +884,7 @@ void change_workspace(uint32_t ws)
 		}
 	}
 
-	/* reenable enter events */
+	/* re-enable enter events */
 	for (item = wslist[ws]; item; item = item->next) {
 		client = item->data;
 		if (! client->fixed) {
@@ -908,7 +901,7 @@ void change_workspace(uint32_t ws)
 
 /*
  * Fix or unfix a window client from all workspaces. If set_color is
- * set, also change back to ordinary focus colour when unfixing.
+ * set, also change back to ordinary focus color when unfixing.
  */
 void fix_client(client_t *client)
 {
@@ -937,7 +930,7 @@ void fix_client(client_t *client)
 }
 
 /*
- * Get the pixel values of a named colour colstr.
+ * Get the pixel values of a named color colstr.
  *
  * Returns pixel values.
  */
@@ -960,7 +953,7 @@ uint32_t getcolor(const char *colstr)
 	col_reply = xcb_alloc_named_color_reply(conn, colcookie, &error);
 
 	if (error || col_reply == NULL) {
-		fprintf(stderr, "mcwm: Couldn't get pixel value for colour %s. Exiting.\n",
+		fprintf(stderr, "mcwm: Couldn't get pixel value for color %s. Exiting.\n",
 				colstr);
 		print_x_error(error);
 		destroy(error);
@@ -1281,7 +1274,7 @@ void icccm_update_wm_hints(client_t* client)
 		return;
 	}
 
-	/* set intput focus, allow if not set */
+	/* set input focus, allow if not set */
 	if (wm_hints.flags & XCB_ICCCM_WM_HINT_INPUT)
 		client->allow_focus = !!(wm_hints.input);
 	else
@@ -1318,7 +1311,7 @@ void icccm_update_wm_protocols(client_t* client)
 }
 
 /*
- * Set border colour, width and event mask for window,
+ * Set border color, width and event mask for window,
  * reparent etc.
  * Executed for each new handled window (unlike newwin)
  * */
@@ -1388,7 +1381,7 @@ client_t *create_client(xcb_window_t win)
 	client->geometry_last = client->geometry;
 
 	/* XXX order of statements!
-	 * geometry, hints, update_gometry, attach_frame ...
+	 * geometry, hints, update_geometry, attach_frame ...
 	 * (new_win, create_client)
 	 */
 	attach_frame(client);
@@ -1713,7 +1706,7 @@ void ewmh_frame_extents(xcb_window_t win, int width)
 }
 
 /*
- * Fit frame window to shape of client window if neccessary
+ * Fit frame window to shape of client window if necessary
  */
 void set_shape(client_t* client)
 {
@@ -1997,7 +1990,6 @@ monitor_t *find_monitor(xcb_randr_output_t id)
 			PDEBUG("find_monitor: Found it. Output ID: %d\n", mon->id);
 			return mon;
 		}
-		PDEBUG("find_monitor: Goint to %p.\n", (void*)item->next);
 	}
 
 	return NULL;
@@ -2181,7 +2173,7 @@ void unset_focus()
 
 	client_t *c = focuswin;
 	focuswin = NULL;
-	/* Set new border colour. */
+	/* Set new border color. */
 	update_bordercolor(c);
 }
 
@@ -2267,7 +2259,7 @@ void set_focus(client_t *client)
 		return;
 	}
 
-	/* set focus if allowed xor
+	/* set input focus (preferred) or
 	 * send WM_TAKE_FOCUS
 	 */
 	if (client->allow_focus) {
@@ -2286,7 +2278,7 @@ void set_focus(client_t *client)
 	/* Remember the new window as the current focused window. */
 	focuswin = client;
 
-	/* Set new border colour. */
+	/* Set new border color. */
 	update_bordercolor(client);
 
 	/* install clients colormap */
@@ -2650,7 +2642,7 @@ void hide(client_t *client)
 /* Forget everything about client client. */
 void remove_client(client_t *client)
 {
-	PDEBUG("remove_client: forgeting about win 0x%x\n", client->id);
+	PDEBUG("remove_client: forgetting about win 0x%x\n", client->id);
 
 	xcb_generic_error_t *error = NULL;
 
@@ -2669,7 +2661,7 @@ void remove_client(client_t *client)
 	/* remove from all workspaces */
 	set_workspace(client, WORKSPACE_NONE);
 
-	/* check if the window is allready gone */
+	/* check if the window is already gone */
 	if (! error || error->error_code != XCB_WINDOW)
 		xcb_change_save_set(conn, XCB_SET_MODE_DELETE, client->id);
 	if (error)
@@ -2684,7 +2676,7 @@ void remove_client(client_t *client)
  * Reparent window
  *
  * also install listening-events to parent and children
- * this does not check if there is allready a parent
+ * this does not check if there is already a parent
  */
 void attach_frame(client_t *client)
 {
@@ -3070,7 +3062,7 @@ void handle_property_notify(xcb_generic_event_t *ev)
 	char* name = get_atomname(e->atom);
 
 	if (! name) {
-		PDEBUG("0x%x notfifies changed atom (%d)\n", e->window, e->atom);
+		PDEBUG("0x%x notifies changed atom (%d)\n", e->window, e->atom);
 	} else {
 		PDEBUG("0x%x notifies changed atom (%d: %s)\n", e->window, e->atom, name);
 		destroy(name);
@@ -3217,7 +3209,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 	PDEBUG("mode now : %d\n", get_mode());
 }
 
-void handle_motion_notify(xcb_generic_event_t *ev) //wunused
+void handle_motion_notify(xcb_generic_event_t *ev)
 {
 	/*
 	 * We can't do anything if we don't have a focused window
@@ -3310,7 +3302,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	PDEBUG("key_press: Key %d pressed (state: %d).\n", e->detail, e->state);
 
-	/* XXX * this might be superflous as we only grab wanted keys */
+	/* XXX * this might be superfluous as we only grab wanted keys */
 	for (i = KEY_F; i < KEY_MAX; i++) {
 		if (keys[i].keycode && e->detail == keys[i].keycode) {
 			key = i;
@@ -3710,7 +3702,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 		update_geometry(client, &geometry);
 	}
 
-	/* handle sibling/stacking order separatly (not that I want to do that) */
+	/* handle sibling/stacking order separately (not that I want to do that) */
 	const uint16_t mask = e->value_mask &
 		(XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_STACK_MODE);
 
@@ -3738,7 +3730,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	client_t *client = find_client(e->window);
 
-	/* Some window want's to know how our frame extends, anyone welcome */
+	/* window asks how out frame would extend around it */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
 		/* XXX check for hints to see if it has border at all (transient etc) ? */
 		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n", e->window);
@@ -3960,28 +3952,16 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 		remove_client(client);
 }
 
-#if 0
-void handle_focus_in(xcb_generic_event_t *ev)
-{
-	xcb_focus_in_event_t *e = (xcb_focus_in_event_t*)ev;
-
-	if (focuswin &&
-			(e->event != focuswin->id && e->event != focuswin->frame)) {
-		set_focus(focuswin);
-	}
-}
-#endif
-
 void print_help(void)
 {
-	printf("mcwm: Usage: mcwm [-b] [-t terminal-program] [-f colour] "
-			"[-u colour] [-x colour] \n");
+	printf("mcwm: Usage: mcwm [-b] [-t terminal-program] [-f color] "
+			"[-u color] [-x color] \n");
 	printf("  -b means draw no borders\n");
 	printf("  -t urxvt will start urxvt when MODKEY + Return is pressed\n");
-	printf("  -f colour sets colour for focused window borders of focused "
+	printf("  -f color sets color for focused window borders of focused "
 			"to a named color.\n");
-	printf("  -u colour sets colour for unfocused window borders.");
-	printf("  -x color sets colour for fixed window borders.");
+	printf("  -u color sets color for unfocused window borders.");
+	printf("  -x color sets color for fixed window borders.");
 }
 
 void signal_catch(int sig)
@@ -4172,7 +4152,7 @@ int main(int argc, char **argv)
 	PDEBUG("Screen size: %dx%d\nRoot window: 0x%x\n",
 			screen->width_in_pixels, screen->height_in_pixels, screen->root);
 
-	/* Get some colours. */
+	/* Get some colors. */
 	conf.focuscol = getcolor(focuscol);
 	conf.unfocuscol = getcolor(unfocuscol);
 	conf.fixedcol = getcolor(fixedcol);

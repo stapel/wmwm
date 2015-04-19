@@ -1576,6 +1576,7 @@ bool setup_ewmh(void)
 		ewmh->_NET_FRAME_EXTENTS,			// window
 		ewmh->_NET_REQUEST_FRAME_EXTENTS,   // message
 		ewmh->_NET_CLOSE_WINDOW,			// message
+		ewmh->_NET_MOVERESIZE_WINDOW,		// message
 		icccm.wm_change_state,				// message
 		icccm.wm_delete_window,				// message
 		icccm.wm_change_state,				// message
@@ -3689,11 +3690,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 
 	/* Don't resize if maximized. */
 	if (! client->fullscreen) {
-		xcb_rectangle_t mon;
 		xcb_rectangle_t geometry = client->geometry;
-
-		/* Find monitor position and size. */
-		get_monitor_geometry(client ? client->monitor : NULL, &mon);
 
 		if (e->value_mask & XCB_CONFIG_WINDOW_X)
 			geometry.x = e->x;
@@ -3752,6 +3749,41 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		return;
 	}
 
+	if (e->type == ewmh->_NET_MOVERESIZE_WINDOW) {
+/*
+		xcb_configure_request_event_t confreq = {
+			.response_type = XCB_CONFIGURE_REQUEST,
+			.value_mask = (e->data.data8[1]??) & 0xF;
+			.parent = client->id,
+			.window = client->id,
+			.sibling = XCB_NONE,
+			.x = e->data...
+			.y = e->data...
+			.width = e->data....,
+			.height = e->data...,
+			.border_width = 0 };
+		handle_configure_request(&confreq);
+*/
+		xcb_rectangle_t geometry = client->geometry;
+		if (e->data.data8[0])
+			client->hints.win_gravity = e->data.data8[0];
+		if (e->data.data8[1] & XCB_CONFIG_WINDOW_X)
+			geometry.x = e->data.data32[1];
+		if (e->data.data8[1] & XCB_CONFIG_WINDOW_Y)
+			geometry.y = e->data.data32[2];
+		if (e->data.data8[1] & XCB_CONFIG_WINDOW_WIDTH)
+			geometry.width = e->data.data32[3];
+		if (e->data.data8[1] & XCB_CONFIG_WINDOW_HEIGHT)
+			geometry.height = e->data.data32[4];
+		/* source ? */
+
+		apply_gravity(client, &geometry);
+		update_geometry(client, &geometry);
+
+		return;
+	}
+
+	/* change WM state (iconic, normal shall just map itself) */
 	if (e->type == icccm.wm_change_state && e->format == 32) {
 		PDEBUG("client_message: wm_change_state\n");
 		if (conf.allowicons) {
@@ -3764,6 +3796,8 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		}
 		return;
 	}
+
+	/* close window */
 	if (e->type == ewmh->_NET_CLOSE_WINDOW) {
 		PDEBUG("client_message: net_close_window\n");
 		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) { // direct user, pager
@@ -3771,6 +3805,8 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		}
 		return;
 	}
+
+	/* set active window */
 	if (e->type == ewmh->_NET_ACTIVE_WINDOW) {
 		PDEBUG("client_message: net_active_window\n");
 		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER) { // direct user, pager
@@ -3808,7 +3844,6 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		// only one wins today
 		switch (action) {
 			case XCB_EWMH_WM_STATE_ADD:
-				PDEBUG(">> add\n");
 				if (fs && !client->fullscreen) {
 					toggle_fullscreen(client);
 					break;
@@ -3819,7 +3854,6 @@ static void handle_client_message(xcb_generic_event_t *ev)
 				}
 				break;
 			case XCB_EWMH_WM_STATE_TOGGLE:
-				PDEBUG(">> toggle\n");
 				if (fs) {
 					toggle_fullscreen(client);
 					break;
@@ -3830,7 +3864,6 @@ static void handle_client_message(xcb_generic_event_t *ev)
 				}
 				break;
 			case XCB_EWMH_WM_STATE_REMOVE:
-				PDEBUG(">> remove\n");
 				if (fs && client->fullscreen) {
 					toggle_fullscreen(client);
 					break;

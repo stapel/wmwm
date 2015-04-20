@@ -24,6 +24,8 @@
  */
 
 /* XXX THINGS TODO XXX
+ * static functions?
+!* set_focus/set_focus_win
 !* _NET_MOVERESIZE_WINDOW
  * handle_client_message
  * MWM hints
@@ -275,7 +277,7 @@ int screen_number;
 xcb_timestamp_t	current_time;	/* latest timestamp XXX */
 
 xcb_ewmh_connection_t *ewmh;		/* EWMH Connection */
-xcb_atom_t ewmh_1_4_NET_WM_STATE_FOCUSED;
+xcb_atom_t ewmh__NET_WM_STATE_FOCUSED;
 
 int randrbase;					/* Beginning of RANDR extension events. */
 int shapebase;					/* Beginning of SHAPE extension events. */
@@ -476,6 +478,7 @@ static int start(char *program);
 static void new_win(xcb_window_t win);
 static client_t *create_client(xcb_window_t win);
 
+static key_enum_t key_from_keycode(xcb_keycode_t keycode);
 static struct modkeycodes get_modkeys(xcb_mod_mask_t modmask);
 static xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym,
 									 xcb_key_symbols_t * keysyms);
@@ -550,7 +553,7 @@ static void ewmh_update_state(client_t* client)
 	if (client->hidden)
 		atoms[i++] = ewmh->_NET_WM_STATE_HIDDEN;
 	if (client == focuswin)
-		atoms[i++] = ewmh_1_4_NET_WM_STATE_FOCUSED;
+		atoms[i++] = ewmh__NET_WM_STATE_FOCUSED;
 
 	if (i > 0) {
 		xcb_ewmh_set_wm_state(ewmh, client->id, i, atoms);
@@ -1538,7 +1541,7 @@ bool setup_ewmh(void)
 		return false;
 	}
 
-	ewmh_1_4_NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
+	ewmh__NET_WM_STATE_FOCUSED = get_atom("_NET_WM_STATE_FOCUSED");
 
 	ewmh_allowed_actions[0] = ewmh->_NET_WM_ACTION_MAXIMIZE_VERT;
 	ewmh_allowed_actions[1] = ewmh->_NET_WM_ACTION_FULLSCREEN;
@@ -1560,7 +1563,7 @@ bool setup_ewmh(void)
 		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// option
 		ewmh->_NET_WM_STATE_FULLSCREEN,		// option
 		ewmh->_NET_WM_STATE_HIDDEN,			// option
-		ewmh_1_4_NET_WM_STATE_FOCUSED,		// option
+		ewmh__NET_WM_STATE_FOCUSED,		// option
 
 		ewmh->_NET_WM_ALLOWED_ACTIONS,		// window
 		ewmh->_NET_WM_ACTION_MAXIMIZE_VERT,	// option
@@ -3286,26 +3289,27 @@ void handle_button_release(xcb_generic_event_t *ev)
 	 */
 }
 
+key_enum_t key_from_keycode(xcb_keycode_t keycode)
+{
+	for (key_enum_t i = KEY_F; i < KEY_MAX; i++) {
+		if (keys[i].keycode && keycode == keys[i].keycode) {
+			return i;
+		}
+	}
+	return KEY_MAX;
+}
+
 void handle_key_press(xcb_generic_event_t *ev)
 {
-	int i;
-	key_enum_t key = KEY_MAX;
-
 	xcb_key_press_event_t *e = (xcb_key_press_event_t*)ev;
 
 	update_timestamp(e->time);
 
-	for (i = KEY_F; i < KEY_MAX; i++) {
-		if (keys[i].keycode && e->detail == keys[i].keycode) {
-			key = i;
-			break;
-		}
-	}
+	key_enum_t key = key_from_keycode(e->detail);
 
 	/* First finish tabbing around. Then deal with the next key. */
 	if (is_mode(mode_tab) && key != KEY_TAB)
 		finish_tab();
-
 
 	/* TODO impossible -> grabbed keys ? */
 	if (key == KEY_MAX) {
@@ -3484,9 +3488,11 @@ void handle_key_release(xcb_generic_event_t *ev)
 
 	update_timestamp(e->time);
 
+	key_enum_t key = key_from_keycode(e->detail);
 	/* if we were tabbing, finish */
-	if (is_mode(mode_tab))
+	if (is_mode(mode_tab) && key != KEY_TAB) {
 		finish_tab();
+	}
 }
 
 void handle_enter_notify(xcb_generic_event_t *ev)

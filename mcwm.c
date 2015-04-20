@@ -48,8 +48,10 @@
  * encapsulate geometry?
  * hide() is now used generally, remove allow_icons stuff
  * unparent clients, remove atoms ... on quit
- * Destroy Window instead of xcb_kill_client() ?
  * WM_COLORMAP_WINDOWS ?
+ * for client messages I might check for source type:
+	if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER
+		|| e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_NONE)
  */
 
 #include <stdlib.h>
@@ -239,10 +241,10 @@ typedef struct client {
 	bool use_delete;				/* use delete_window client message to kill a window */
 	bool ewmh_state_set;			/* is _NET_WM_STATE set? */
 
-	bool vertmaxed;					/* Vertically maximized? XXX not fullscreen at all */
-	bool fullscreen;				/* Totally maximized? XXX aka fullscreen*/
+	bool vertmaxed;					/* Vertically maximized, borders */
+	bool fullscreen;				/* Fullscreen, i.e. without border */
 	bool fixed;						/* Visible on all workspaces? */
-	bool hidden;
+	bool hidden;					/* Currently hidden */
 	int killed;						/* number of times we sent delete_window message */
 
 	bool ignore_unmap;				/* unmap_notification we shall ignore */
@@ -277,7 +279,7 @@ int screen_number;
 xcb_timestamp_t	current_time;	/* latest timestamp XXX */
 
 xcb_ewmh_connection_t *ewmh;		/* EWMH Connection */
-xcb_atom_t ewmh__NET_WM_STATE_FOCUSED;
+xcb_atom_t ewmh__NET_WM_STATE_FOCUSED; /* atom not in extension */
 
 int randrbase;					/* Beginning of RANDR extension events. */
 int shapebase;					/* Beginning of SHAPE extension events. */
@@ -446,7 +448,7 @@ static void set_workspace(client_t *client, uint32_t ws);
 static void change_workspace(uint32_t ws);
 
 static void fix_client(client_t *client);
-static void set_shape(client_t *client);
+static void update_shape(client_t *client);
 static void raise_client(client_t *client);
 static void raise_or_lower_client(client_t *client);
 static void set_focus(client_t *client);
@@ -672,7 +674,6 @@ void cleanup(int code)
 			XCB_INPUT_FOCUS_POINTER_ROOT, get_timestamp());
 
 	if (ewmh) {
-		/* TODO * delete atoms */
 		xcb_ewmh_connection_wipe(ewmh);
 	}
 	xcb_disconnect(conn);
@@ -970,13 +971,11 @@ uint32_t getcolor(const char *colstr)
 int update_geometry(client_t *client,
 		const xcb_rectangle_t *geometry)
 {
-	/* check if geometry changed */
-	if (geometry && memcmp(&geometry, &(client->geometry),
-				sizeof(xcb_rectangle_t)) == 0)
-		return 0;
-
 	xcb_rectangle_t monitor;
 	xcb_rectangle_t geo;
+
+	const xcb_size_hints_t *hints = &client->hints;
+	const int border = client->fullscreen ? 0 : conf.borderwidth;
 
 	get_monitor_geometry(client->monitor, &monitor);
 
@@ -986,38 +985,11 @@ int update_geometry(client_t *client,
 		goto out;
 	}
 
-	if (! geometry) // update because monitor change e.g.
+	/* Is geometry proposed, or do we check current */
+	if (! geometry)
 		geo = client->geometry;
 	else
 		geo = *geometry;
-
-	/* XXX check if monitor changed and we are checking this here for good */
-
-	const xcb_size_hints_t hints = client->hints;
-	/* Is the size within specified increments?
-	 *   width = base_width + (i × width_inc)
-	 *	 height = base_height + (j × height_inc)
-	*/
-//  XXX This might not be good to skip if i update_... when monitor changes, or flag it
-//	if (height || width) {
-//	XXX set sane defaults in hints init, -1 or so
-	if (hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC &&
-			(hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE
-			 || hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
-		geo.width -= (geo.width - hints.base_width) % hints.width_inc;
-		geo.height -= (geo.height - hints.base_height) % hints.height_inc;
-	}
-
-	/* Is it smaller than it wants to  be? */
-	if (hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE) {
-		if (geo.height < hints.min_height)
-			geo.height = hints.min_height;
-
-		if (geo.width < hints.min_width)
-			geo.width = hints.min_width;
-	}
-
-	const int border = client->fullscreen ? 0 : conf.borderwidth;
 
 	/* Is it bigger than our viewport? */
 	if (geo.width + border * 2 > monitor.width)
@@ -1026,15 +998,33 @@ int update_geometry(client_t *client,
 	if (geo.height + border * 2 > monitor.height)
 		geo.height = monitor.height - border * 2;
 
-	/* Is it bigger than it's maximal size? */
-	if (hints.flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) {
-		if (geo.height > hints.max_height)
-			geo.height = hints.max_height;
-		if (geo.width > hints.max_width)
-			geo.width = hints.max_width;
+	/* Is size within allowed increments */
+	if (hints->flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC &&
+			(hints->flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE
+			 || hints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
+
+		geo.width -= (geo.width - hints->base_width)
+			% hints->width_inc;
+		geo.height -= (geo.height - hints->base_height)
+			% hints->height_inc;
 	}
 
-// } // if (height || width)
+	/* Is it smaller than it wants to be? */
+	if (hints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE) {
+		if (geo.height < hints->min_height)
+			geo.height = hints->min_height;
+
+		if (geo.width < hints->min_width)
+			geo.width = hints->min_width;
+	}
+
+	/* Is it bigger than it's maximal size? */
+	if (hints->flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) {
+		if (geo.height > hints->max_height)
+			geo.height = hints->max_height;
+		if (geo.width > hints->max_width)
+			geo.width = hints->max_width;
+	}
 
 	/* Is it outside of the physical monitor
 	 * or is it overlapping with the monitor edge?
@@ -1052,6 +1042,7 @@ int update_geometry(client_t *client,
 		geo.y = monitor.y + monitor.height - geo.height - border*2;
 	else if (geo.y > monitor.y + monitor.height)
 		geo.y = monitor.y + monitor.height - geo.height - border*2;
+
 
 out: ;
 	uint32_t values[2];
@@ -1215,12 +1206,15 @@ void icccm_update_wm_normal_hints(client_t* client)
 	if (! client)
 		return;
 
-	xcb_size_hints_t hints;
+	xcb_size_hints_t *hints = &client->hints;
 
-	/* XXX check for client->hints validity */
-	if (! xcb_icccm_get_wm_normal_hints_reply
-			(conn, xcb_icccm_get_wm_normal_hints_unchecked(conn, client->id),
-			 &hints, NULL)) {
+	/* zero current hints */
+	memset(hints, 0, sizeof(xcb_size_hints_t));
+
+	if (! xcb_icccm_get_wm_normal_hints_reply(conn,
+				xcb_icccm_get_wm_normal_hints_unchecked(conn, client->id),
+			 	hints, NULL)) {
+		memset(hints, 0, sizeof(xcb_size_hints_t));
 		PDEBUG("Couldn't get size hints.\n");
 		return;
 	}
@@ -1229,34 +1223,33 @@ void icccm_update_wm_normal_hints(client_t* client)
 	 * The user specified the position coordinates. Remember that so
 	 * we can use geometry later.
 	 */
-	if (hints.flags & XCB_ICCCM_SIZE_HINT_US_POSITION)
+	if (hints->flags & XCB_ICCCM_SIZE_HINT_US_POSITION)
 		client->usercoord = true;
 
-	if (!(hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
-			&& (hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
+	if (!(hints->flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
+			&& (hints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
 		PDEBUG("base_size hints missing, using min_size\n");
-		hints.base_width = hints.min_width;
-		hints.base_height = hints.min_height;
-		hints.flags |= XCB_ICCCM_SIZE_HINT_BASE_SIZE;
-	} else if ((hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
-			&& (!(hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE))) {
+		hints->base_width = hints->min_width;
+		hints->base_height = hints->min_height;
+		hints->flags |= XCB_ICCCM_SIZE_HINT_BASE_SIZE;
+	} else if ((hints->flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE)
+			&& (!(hints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE))) {
 		PDEBUG("min_size hints missing, using base_size\n");
-		hints.min_width = hints.base_width;
-		hints.min_height = hints.base_height;
-		hints.flags |= XCB_ICCCM_SIZE_HINT_P_MIN_SIZE;
+		hints->min_width = hints->base_width;
+		hints->min_height = hints->base_height;
+		hints->flags |= XCB_ICCCM_SIZE_HINT_P_MIN_SIZE;
 	}
 
-	if (!(hints.flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC)) {
-		hints.width_inc = 1;
-		hints.height_inc = 1;
+	if (!(hints->flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC)) {
+		hints->width_inc = 1;
+		hints->height_inc = 1;
 	} else {
 		/* failsafes */
-		if (hints.width_inc < 1)
-			hints.width_inc = 1;
-		if (hints.height_inc < 1)
-			hints.height_inc = 1;
+		if (hints->width_inc < 1)
+			hints->width_inc = 1;
+		if (hints->height_inc < 1)
+			hints->height_inc = 1;
 	}
-	client->hints = hints;
 }
 
 /*
@@ -1347,28 +1340,21 @@ client_t *create_client(xcb_window_t win)
 	client->frame = XCB_WINDOW_NONE;
 
 	client->monitor = NULL;
-
 	client->usercoord = false;
-
 	client->vertmaxed = false;
 	client->fullscreen = false;
 	client->fixed = false;
-
 	client->take_focus = false;
 	client->use_delete = false;
 	client->hidden = false;
-
-	client->allow_focus = true;
 	client->ignore_unmap = false;
-
-	client->colormap = screen->default_colormap;
-
 	client->ewmh_state_set = false;
-
 	client->killed = 0;
 
-	client->winitem = item;
+	client->allow_focus = true;
+	client->colormap = screen->default_colormap;
 
+	client->winitem = item;
 	for (ws = 0; ws < WORKSPACES; ws++) {
 		client->wsitem[ws] = NULL;
 	}
@@ -1383,16 +1369,17 @@ client_t *create_client(xcb_window_t win)
 	}
 	client->geometry_last = client->geometry;
 
-	/* XXX order of statements!
-	 * geometry, hints, update_geometry, attach_frame ...
-	 * (new_win, create_client)
-	 */
+	/* Create frame and reparent */
 	attach_frame(client);
 
+	/* Check if the window has _NET_WM_STATE_FULLSCREEN set
+	 * (XXX check for other states as well ?)
+	 */
 	if (ewmh_is_fullscreen(client)) {
 		PDEBUG("0x%x is fullscreen right from startup\n", client->id);
 		toggle_fullscreen(client);
 	} else {
+		/* set borders and frame extents */
 		set_borders(client->frame, conf.borderwidth);
 		ewmh_frame_extents(client->id, conf.borderwidth);
 	}
@@ -1401,19 +1388,21 @@ client_t *create_client(xcb_window_t win)
 		/* enable shape change notifications for client */
 		xcb_shape_select_input(conn, client->id, 1);
 		/* set shape, if any */
-		set_shape(client);
+		update_shape(client);
 	}
 
-	// local used information
+	// gather ICCCM specified hints for window management
 	icccm_update_wm_hints(client);
 	icccm_update_wm_normal_hints(client);
 	icccm_update_wm_protocols(client);
 
+	/* set _NET_WM_STATE_* */
 	ewmh_update_state(client);
 
-	// update client list
+	/* update root window's client list */
 	ewmh_update_client_list();
 
+	/* set WM actions allowed by the client */
 	xcb_ewmh_set_wm_allowed_actions(ewmh, client->id,
 			sizeof(ewmh_allowed_actions)/sizeof(xcb_atom_t),
 			ewmh_allowed_actions);
@@ -1709,12 +1698,8 @@ void ewmh_frame_extents(xcb_window_t win, int width)
 /*
  * Fit frame window to shape of client window if necessary
  */
-void set_shape(client_t* client)
+void update_shape(client_t* client)
 {
-	/* XXX:
-	 * disable borders, they might appear
-	 * clip-shape/bounding-shape
-	 */
 	xcb_shape_query_extents_reply_t *extents;
 	xcb_generic_error_t* error;
 
@@ -1725,6 +1710,7 @@ void set_shape(client_t* client)
 		destroy(error);
 		return;
 	}
+	/* Do we have a bounding shape, e.g. shape for the frame */
 	if (extents->bounding_shaped) {
 		PDEBUG("0x%x is shaped, shaping frame\n", client->id);
 		xcb_shape_combine(conn, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_BOUNDING, XCB_SHAPE_SK_BOUNDING,
@@ -2234,10 +2220,6 @@ client_t *find_client(xcb_drawable_t win)
 /* Set focus on window client. */
 void set_focus(client_t *client)
 {
-	/* XXX what when we do send a event and the client asks in return?
-	 * XXX we should check if that client is on the current ws
-	 */
-
 	PDEBUG("set_focus: client = 0x%x (focuswin = 0x%x)\n",
 			client ? client->id : 0, focuswin ? focuswin->id : 0);
 
@@ -2279,9 +2261,8 @@ void set_focus(client_t *client)
 	}
 
 	/* Unset last focus. */
-	if (focuswin) {
+	if (focuswin)
 		unset_focus();
-	}
 
 	/* Remember the new window as the current focused window. */
 	focuswin = client;
@@ -2289,13 +2270,13 @@ void set_focus(client_t *client)
 	/* Set new border color. */
 	update_bordercolor(client);
 
-	/* install clients colormap */
+	/* Install client's colormap */
 	xcb_install_colormap(conn, client->colormap);
 
-	/* set active window ewmh-hint */
+	/* Set active window ewmh-hint */
 	xcb_ewmh_set_active_window(ewmh, screen_number, client->id);
 
-	/* mark window as focuswin etc. */
+	/* Mark window as focuswin etc. */
 	ewmh_update_state(client);
 }
 
@@ -3011,7 +2992,7 @@ void events(void)
 				if (sev->shaped) {
 					client_t* client = find_client(sev->affected_window);
 					if (client)
-						set_shape(client);
+						update_shape(client);
 				}
 			} else if (handler[response_type]) {
 				handler[response_type](ev);
@@ -3178,7 +3159,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 			break;
 		case 3: /* right button: resize */
 			set_mode(mode_resize);
-			/* Warp pointer to lower right. XXX gravity ? */
+			/* Warp pointer to lower right. Ignore gravity.  */
 			xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame, 0,
 					0, 0, 0, focuswin->geometry.width,
 					focuswin->geometry.height);
@@ -3277,24 +3258,18 @@ void handle_button_release(xcb_generic_event_t *ev)
 	set_mode(mode_nothing);
 	PDEBUG("mode now = %d\n", get_mode());
 
-	/* XXX obsolete now?
-	 * We will get an EnterNotify and focus another window
-	 * if the pointer just happens to be on top of another
-	 * window when we ungrab the pointer, so we have to
-	 * warp the pointer before to prevent this.
-	 *
-	 * Move to saved position within window or if that
-	 * position is now outside current window, move inside
-	 * window.
+	/*
+	 * We will get an EnterNotify if the pointer just happens to be
+	 * on top of another window when we ungrab the pointer,
+	 * but it's not a normal enter event, so we can ignore it.
 	 */
 }
 
 key_enum_t key_from_keycode(xcb_keycode_t keycode)
 {
 	for (key_enum_t i = KEY_F; i < KEY_MAX; i++) {
-		if (keys[i].keycode && keycode == keys[i].keycode) {
+		if (keys[i].keycode && keycode == keys[i].keycode)
 			return i;
-		}
 	}
 	return KEY_MAX;
 }
@@ -3485,14 +3460,11 @@ void handle_key_press(xcb_generic_event_t *ev)
 void handle_key_release(xcb_generic_event_t *ev)
 {
 	xcb_key_release_event_t *e = (xcb_key_release_event_t *) ev;
-
 	update_timestamp(e->time);
 
-	key_enum_t key = key_from_keycode(e->detail);
 	/* if we were tabbing, finish */
-	if (is_mode(mode_tab) && key != KEY_TAB) {
+	if (is_mode(mode_tab) && key_from_keycode(e->detail) != KEY_TAB)
 		finish_tab();
-	}
 }
 
 void handle_enter_notify(xcb_generic_event_t *ev)
@@ -3694,9 +3666,10 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	/* window asks how out frame would extend around it */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {
-		/* XXX check for hints to see if it has border at all (transient etc) ? */
-		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n", e->window);
-		ewmh_frame_extents(e->window, client && client->fullscreen ? 0 : conf.borderwidth);
+		PDEBUG("client_message: _NET_REQUEST_FRAME_EXTENTS for 0x%x.\n",
+				e->window);
+		ewmh_frame_extents(e->window,
+				client && client->fullscreen ? 0 : conf.borderwidth);
 		return;
 	}
 
@@ -3707,21 +3680,8 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		return;
 	}
 
+	/* move and/or resize the window */
 	if (e->type == ewmh->_NET_MOVERESIZE_WINDOW) {
-/*
-		xcb_configure_request_event_t confreq = {
-			.response_type = XCB_CONFIGURE_REQUEST,
-			.value_mask = (e->data.data8[1]??) & 0xF;
-			.parent = client->id,
-			.window = client->id,
-			.sibling = XCB_NONE,
-			.x = e->data...
-			.y = e->data...
-			.width = e->data....,
-			.height = e->data...,
-			.border_width = 0 };
-		handle_configure_request(&confreq);
-*/
 		xcb_rectangle_t geometry = client->geometry;
 		if (e->data.data8[0])
 			client->hints.win_gravity = e->data.data8[0];
@@ -3733,7 +3693,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 			geometry.width = e->data.data32[3];
 		if (e->data.data8[1] & XCB_CONFIG_WINDOW_HEIGHT)
 			geometry.height = e->data.data32[4];
-		/* source ? */
+		/* XXX source ? */
 
 		apply_gravity(client, &geometry);
 		update_geometry(client, &geometry);
@@ -3741,7 +3701,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		return;
 	}
 
-	/* change WM state (iconic, normal shall just map itself) */
+	/* change WM state (iconic only, normal shall just map itself) */
 	if (e->type == icccm.wm_change_state && e->format == 32) {
 		PDEBUG("client_message: wm_change_state\n");
 		if (conf.allowicons) {
@@ -3758,19 +3718,18 @@ static void handle_client_message(xcb_generic_event_t *ev)
 	/* close window */
 	if (e->type == ewmh->_NET_CLOSE_WINDOW) {
 		PDEBUG("client_message: net_close_window\n");
-		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER)
-			delete_win(client);
+		delete_win(client);
 		return;
 	}
 
-	/* set active window */
+	/* Set active window */
 	if (e->type == ewmh->_NET_ACTIVE_WINDOW) {
 		PDEBUG("client_message: net_active_window\n");
-		if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER)
-			set_focus(client);
+		set_focus(client);
 		return;
 	}
-	/* XXX make this a little nicer */
+
+	/* window manager state request */
 	if (e->type == ewmh->_NET_WM_STATE) {
 		PDEBUG("client_message: net_wm_state\n");
 		bool max_v	= false;
@@ -3778,16 +3737,18 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 		int action	= e->data.data32[0];
 
+
 		for (int i = 1; i < 3; i++) {
 			xcb_atom_t atom = (xcb_atom_t)e->data.data32[i];
 			if (atom == ewmh->_NET_WM_STATE_FULLSCREEN)
 				fs = true;
 			else if (atom == ewmh->_NET_WM_STATE_MAXIMIZED_VERT)
 				max_v = true;
-//			else if (atom == ewmh->_NET_WM_STATE_MAXIMIZE_HORZ) // XXX unimpl
-//				max_h = true;
-//			else if (atom == ewmh->_NET_WM_STATE_HIDDEN)		// will not allow
-//				hide = true;
+			/* further possble states:
+			 * _NET_WM_STATE_MAXIMIZE_HORZ (unimplemented)
+			 * _NET_WM_STATE_HIDDEN)       (will not be allowed)
+			 * stacking order              (TODO)
+			 */
 #ifdef DEBUG
 			else {
 				if (i == 2 && atom == 0) /* ??? */
@@ -3796,41 +3757,28 @@ static void handle_client_message(xcb_generic_event_t *ev)
 			}
 #endif
 		}
-		// TODO logic XXX
-		// only one wins today
+
+		// Act on request, fullscreen takes precedence
 		switch (action) {
 			case XCB_EWMH_WM_STATE_ADD:
-				if (fs && !client->fullscreen) {
+				if (fs && !client->fullscreen)
 					toggle_fullscreen(client);
-					break;
-				}
-				if (max_v && !client->vertmaxed) {
+				else if (max_v && !client->vertmaxed)
 					toggle_vertical(client);
-					break;
-				}
 				break;
 			case XCB_EWMH_WM_STATE_TOGGLE:
-				if (fs) {
+				if (fs)
 					toggle_fullscreen(client);
-					break;
-				}
-				if (max_v) {
+				else if (max_v)
 					toggle_vertical(client);
-					break;
-				}
 				break;
 			case XCB_EWMH_WM_STATE_REMOVE:
-				if (fs && client->fullscreen) {
+				if (fs && client->fullscreen)
 					toggle_fullscreen(client);
-					break;
-				}
-				if (fs && client->vertmaxed) {
+				else if (max_v && client->vertmaxed)
 					toggle_vertical(client);
-					break;
-				}
 				break;
-		} // switch
-
+		}
 	} // if _net_wm_state
 }
 

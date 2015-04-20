@@ -2782,7 +2782,11 @@ void warp_focuswin(step_direction_t direction)
 	}
 }
 
-/* inform client's window about esp. where it is */
+/* Inform client's window about esp. where it is.
+ * Reparented windows get moved via their frame window, they do not
+ * move by themselves, so we send a synthetic configure_event with
+ * the new absolut position.
+ */
 void send_configuration(client_t *client)
 {
 	xcb_configure_notify_event_t ev = {

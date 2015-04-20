@@ -5,7 +5,7 @@ DISTFILES=LICENSE Makefile NEWS README TODO WISHLIST mcwm.man $(SRC)
 
 #CC=clang
 debug=1
-CC=gcc
+CC ?= gcc
 ifeq ($(mudflap),1)
 	ETCFLAGS=-pedantic -fmudflap#-DDEBUG
 	LDFLAGS=-lmudflap

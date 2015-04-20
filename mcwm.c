@@ -26,16 +26,11 @@
 /* XXX THINGS TODO XXX
  * static functions?
 !* set_focus/set_focus_win
+!* stacking
 !* _NET_MOVERESIZE_WINDOW
- * handle_client_message
+ * handle_client_message more
  * MWM hints
  * aspect normal_hints
-!* focus still can be lost (e.g. wine)
-   wine e.g. has allow_focus == false! so no falling back if killed ? XXX
-   THIS HAPPENS WHEN THE CLIENT SETS FOCUS BY ITSELF AND
-   USES revert_to = parent, this in turn reverts to 0,0 if no parent
- * disallow configure_win x,y again ?
- * function
 !* Error handling
 ?* LVDS is seen as clone of VGA-0? look at special-log
  * NET_WM_STATE client message

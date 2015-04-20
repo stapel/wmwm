@@ -204,12 +204,13 @@ int findhidden(void)
 		id = (clients.windows)[i];
 		state = get_wm_state(id);
 		if (state == XCB_ICCCM_WM_STATE_ICONIC) {
-			printf("#%d\t", ewmh_get_workspace(id));
-			if (get_wm_name(id, &name, &name_len) != 0) {
-				printf("%s\n", name);
-				free(name);
-			} else {
-				printf("unnamed window (0x%x)\n", id);
+			if (ewmh_get_workspace(id) == -1) {
+				if (get_wm_name(id, &name, &name_len) != 0) {
+					printf("%s\n", name);
+					free(name);
+				} else {
+					printf("unnamed window (0x%x)\n", id);
+				}
 			}
 		}
 	}

@@ -3287,7 +3287,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	/* TODO impossible -> grabbed keys ? */
 	if (key == KEY_MAX) {
-		PERROR("Unknown key pressed.\n");
+		PERROR("Unknown key pressed (%d).\n", key);
 
 		/*
 		 * We don't know what to do with this key. Send this key press

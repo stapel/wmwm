@@ -24,6 +24,7 @@
  */
 
 /* XXX THINGS TODO XXX
+ * focus on startup
 !* set_focus/set_focus_win
 !* stacking
 !* _NET_MOVERESIZE_WINDOW
@@ -1144,16 +1145,14 @@ void new_win(xcb_window_t win)
 		int16_t pointy;
 
 		/* Get pointer position so we can move the window to the cursor. */
-		if (! get_pointer(screen->root, &pointx, &pointy)) {
-			PDEBUG("Failed to get pointer coords! \n");
-			pointx = 0;
-			pointy = 0;
+		if (get_pointer(screen->root, &pointx, &pointy)) {
+			geometry.x = pointx - geometry.width / 2;
+			geometry.y = pointy - geometry.height / 2;
+		} else {
+			geometry.x = 0;
+			geometry.y = 0;
 		}
-
-		PDEBUG("Coordinates not set by user. Using pointer: %d,%d.\n", pointx, pointy);
-
-		geometry.x = pointx;
-		geometry.y = pointy;
+		PDEBUG("Coordinates not set by user. Using: %d,%d.\n", pointx, pointy);
 	} else {
 		PDEBUG("User set coordinates.\n");
 	}
@@ -1184,6 +1183,7 @@ void new_win(xcb_window_t win)
 	 * Move cursor into the middle of the window so we don't lose the
 	 * pointer to another window.
 	 */
+	/* check when this is actually needed XXX */
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, win, 0, 0, 0, 0,
 			client->geometry.width / 2, client->geometry.height / 2);
 }

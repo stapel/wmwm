@@ -3202,9 +3202,10 @@ void handle_motion_notify(xcb_generic_event_t *ev)
 		mouse_move(focuswin, e->root_x - mode_x, e->root_y - mode_y);
 	else if (is_mode(mode_resize))
 		mouse_resize(focuswin, e->root_x, e->root_y);
+#if DEBUG
 	else
 		PDEBUG("Motion event when we're not moving our resizing! \n");
-
+#endif
 }
 
 void handle_button_release(xcb_generic_event_t *ev)
@@ -3263,7 +3264,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	/* TODO impossible -> grabbed keys ? */
 	if (key == KEY_MAX) {
-		PERROR("Unknown key pressed (%d).\n", key);
+		PERROR("Unknown key pressed (state %d - key %d).\n", e->state, e->detail);
 
 		/*
 		 * We don't know what to do with this key. Send this key press

@@ -24,7 +24,6 @@
  */
 
 /* XXX THINGS TODO XXX
- * static functions?
 !* set_focus/set_focus_win
 !* stacking
 !* _NET_MOVERESIZE_WINDOW
@@ -432,6 +431,7 @@ static bool ewmh_is_fullscreen(client_t*);
 static uint32_t ewmh_get_workspace(xcb_drawable_t win);
 static void ewmh_update_client_list();
 static void ewmh_frame_extents(xcb_window_t win, int width);
+static void ewmh_update_state(client_t* client);
 
 static void resize_step(client_t *client, step_direction_t direction);
 static void mouse_move(client_t *client, int rel_x, int rel_y);
@@ -460,8 +460,8 @@ static void hide(client_t *client);
 static void remove_client(client_t *client);
 static void show(client_t *client);
 
-void send_client_message(xcb_window_t window, xcb_atom_t atom);
-void send_configuration(client_t *client);
+static void send_client_message(xcb_window_t window, xcb_atom_t atom);
+static void send_configuration(client_t *client);
 
 static void set_input_focus(xcb_window_t win);
 static void set_borders(xcb_drawable_t win, int width);
@@ -532,7 +532,7 @@ static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME
 /*
  * Update client's window's atoms
  */
-static void ewmh_update_state(client_t* client)
+void ewmh_update_state(client_t* client)
 {
 	xcb_atom_t atoms[5];
 	uint32_t i = 0;

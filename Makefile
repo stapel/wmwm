@@ -8,10 +8,10 @@ debug=1
 CC ?= gcc
 
 CFLAGS += -fdiagnostics-color=always
-CFLAGS += $(ETCFLAGS) -std=c99 -I/usr/local/include -Wall -Wextra -fstack-protector-all -pedantic -g -O2 -Wno-variadic-macros
+CFLAGS += $(ETCFLAGS) -std=c99 -I/usr/local/include -Wall -Wextra -fstack-protector-all -pedantic -g -O3 -Wno-variadic-macros
 
 ifeq ($(debug),1)
-	CFLAGS += -DDEBUG -Wno-format-extra-args -O1 -fsanitize=address -fno-omit-frame-pointer
+	CFLAGS += -DDEBUG -Wno-format-extra-args -O1 -fsanitize=address -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined
 endif
 
 

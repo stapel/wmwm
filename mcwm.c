@@ -24,7 +24,14 @@
  */
 
 /* XXX THINGS TODO XXX
- * focus on startup
+ * startup:
+ * 	focus (would have to switch ws to make everything work fine)
+ * 	windows get moved some pixels ?
+ * Override-Redirect Windows ? (dock etc.)
+ * gprof/gcov?
+!* only update geometry after workspace change (or on current) after
+   monitor-updates
+ * setup keys for single keys (mapping_notify)
 !* set_focus/set_focus_win
 !* stacking
 !* _NET_MOVERESIZE_WINDOW
@@ -58,9 +65,8 @@
 #include <getopt.h>
 #include <string.h>
 #include <signal.h>
-//#include <assert.h>
 
-#include <sys/select.h>
+#include <poll.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
@@ -680,15 +686,12 @@ void cleanup(int code)
  */
 void arrangewindows(void)
 {
-	item_t *item;
-	client_t *client;
-
 	/*
 	 * Go through all windows. If they don't fit on the new screen,
 	 * move them around and resize them as necessary.
 	 */
-	for (item = winlist; item; item = item->next) {
-		client = item->data;
+	for (item_t *item = winlist; item; item = item->next) {
+		client_t *client = item->data;
 		update_geometry(client, NULL);
 	}
 }
@@ -879,6 +882,7 @@ void change_workspace(uint32_t ws)
 
 		/* Fixed windows are already mapped. Map everything else. */
 		if (! client->fixed) {
+//			update_geometry(client, NULL);
 			show(client);
 		}
 	}
@@ -951,7 +955,7 @@ uint32_t getcolor(const char *colstr)
 			colstr);
 	col_reply = xcb_alloc_named_color_reply(conn, colcookie, &error);
 
-	if (error || col_reply == NULL) {
+	if (col_reply == NULL) {
 		PERROR("Couldn't get pixel value for color %s. Exiting.\n", colstr);
 		print_x_error(error);
 		destroy(error);
@@ -1117,10 +1121,10 @@ void new_win(xcb_window_t win)
 	 * et cetera.
 	 */
 	client_t* client = create_client(win);
-	xcb_rectangle_t geometry = client->geometry;
-
 	if (! client)
 		return;
+
+	xcb_rectangle_t geometry = client->geometry;
 
 	/* Get the window's colormap */
 	xcb_get_window_attributes_reply_t *attr =
@@ -1463,11 +1467,13 @@ bool setup_keys(void)
 
 			/* Get rid of key symbols. */
 			xcb_key_symbols_free(keysyms);
-			PDEBUG(".. could not setup keys\n");
+			PDEBUG(".. couldn't setup keys\n");
 			return false;
 		}
 
 		/* Grab other keys with a modifier mask. */
+		PDEBUG("Grabbing key (%d, with keycode: %d)\n",
+				i, keys[i].keycode);
 		xcb_grab_key(conn, 1, screen->root,
 				MODKEY | (i == KEY_TAB ? 0 : CONTROLMOD),
 				keys[i].keycode, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
@@ -1479,6 +1485,8 @@ bool setup_keys(void)
 						MODKEY | CONTROLMOD | SHIFTMOD,
 						keys[i].keycode, XCB_GRAB_MODE_ASYNC,
 						XCB_GRAB_MODE_ASYNC);
+				PDEBUG("Grabbing key (%d, with keycode: %d)\n",
+					i, keys[i].keycode);
 		}
 	} /* for */
 
@@ -1861,7 +1869,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 
 			/* Do we know this monitor already? */
 			if (!(mon = find_monitor(outputs[i]))) {
-				PDEBUG("Monitor not known, adding to list.\n");
+				PDEBUG("Monitor unknown, adding to list.\n");
 				add_monitor(outputs[i], name,
 						crtc->x, crtc->y,
 						crtc->width, crtc->height);
@@ -2134,6 +2142,7 @@ void focus_next(void)
 
 		xcb_configure_window(conn, client->frame,
 				XCB_CONFIG_WINDOW_STACK_MODE, values);
+	/* check when this is actually needed XXX */
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 				client->geometry.width / 2, client->geometry.height / 2);
 		set_focus(client);
@@ -2359,6 +2368,7 @@ void resize_step(client_t *client, step_direction_t direction)
 		ewmh_update_state(client);
 	}
 
+	/* check when this is actually needed XXX */
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 			client->geometry.width / 2, client->geometry.height / 2);
 }
@@ -2496,6 +2506,7 @@ void unmax(client_t *client)
 	ewmh_frame_extents(client->id, conf.borderwidth);
 
 	/* Warp pointer to window or we might lose it. */
+	/* check when this is actually needed XXX */
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 			client->geometry.width / 2, client->geometry.height / 2);
 }
@@ -2742,6 +2753,7 @@ bool get_geometry(xcb_drawable_t win, xcb_rectangle_t *geometry)
 	return true;
 }
 
+/* Move the focuswin to edges */
 void warp_focuswin(step_direction_t direction)
 {
 	int16_t pointx;
@@ -2924,12 +2936,13 @@ void events(void)
 {
 	xcb_generic_event_t *ev = NULL;
 
-	int fd;						/* Our X file descriptor */
-	fd_set in;					/* For select */
+	struct pollfd in;			/* poll struct with X fd */
 
-	/* Get the file descriptor so we can do select() on it. */
-	fd = xcb_get_file_descriptor(conn);
-	if (fd == -1) {
+	/* Get the file descriptor so we can do poll() on it. */
+	in.fd = xcb_get_file_descriptor(conn);
+	in.events = POLLIN;
+
+	if (in.fd == -1) {
 		PERROR("Could not connect to xcb file descriptor\n");
 		cleanup(1);
 	}
@@ -2939,28 +2952,26 @@ void events(void)
 
 	for (sigcode = 0; sigcode == 0;) {
 		/*
-		 * Check for events, again and again. When poll returns NULL
-		 * (and it does that a lot), we block on select() until the
-		 * event file descriptor gets readable again.
+		 * poll() for incoming events, then use xcb_poll_for_event()
+		 * to get the pending events.
 		 *
 		 * We do it this way instead of xcb_wait_for_event() since
-		 * select() will return if we were interrupted by a signal. We
-		 * like that.
+		 * poll() will return if we were interrupted by a signal.
+		 *
 		 */
 
-		FD_ZERO(&in); FD_SET(fd, &in);
-		if (select(fd + 1, &in, NULL, NULL, NULL) == -1) {
+		if (poll(&in, 1, -1) == -1) {
 			/* We received a signal. Break out of loop. */
 			if (errno == EINTR)
 				break;
-			perror("mcwm select");
+			perror("mcwm poll()");
 			cleanup(1);
 		}
 
+		/* Get and process next event */
 		while ((ev = xcb_poll_for_event(conn))) {
 			const uint8_t response_type = XCB_EVENT_RESPONSE_TYPE(ev);
-
-			PDEBUG("Event: %s (%d, handled: %d)\n",
+			PDEBUG("  | %s (%d, handled: %d)\n",
 					xcb_event_get_label(response_type),
 					response_type,
 					handler[response_type] ? 1 : 0);
@@ -3433,6 +3444,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 	}
 }
 
+/* is that even neccessary, because I get the same for keypress and key release XXX ? */
 void handle_key_release(xcb_generic_event_t *ev)
 {
 	xcb_key_release_event_t *e = (xcb_key_release_event_t *) ev;
@@ -3449,7 +3461,7 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 
 	update_timestamp(e->time);
 
-	PDEBUG ("event: Enter notify eventwin 0x%x, child 0x%x, detail %d, mode %d\n",
+	PDEBUG ("Enter notify event: win 0x%x, child 0x%x, detail %d, mode %d\n",
 		 e->event, e->child, e->detail, e->mode);
 
 	/*
@@ -4063,6 +4075,7 @@ int main(int argc, char **argv)
 	/* Check for SHAPE extension */
 	shapebase = setup_shape();
 
+
 	/* Loop over all clients and set up stuff. */
 	if (! setup_screen()) {
 		PERROR("Failed to initialize windows. Exiting.\n");
@@ -4095,14 +4108,12 @@ int main(int argc, char **argv)
 			XCB_NONE, 3 /* right mouse button */ ,
 			MOUSEMODKEY);
 
+	/* why can't I put this before setup_screen ? XXX */
 	/* Subscribe to events. */
 	mask = XCB_CW_EVENT_MASK;
-
 	values[0] = DEFAULT_ROOT_WINDOW_EVENTS;
-
 	cookie = xcb_change_window_attributes_checked(conn, root, mask, values);
 	error = xcb_request_check(conn, cookie);
-
 	if (error) {
 		PERROR("Can't get SUBSTRUCTURE REDIRECT. "
 				"Another window manager running? Exiting.\n");

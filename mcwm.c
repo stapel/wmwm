@@ -177,32 +177,32 @@ typedef enum {
 
 /* All our key shortcuts. */
 typedef enum {
-	KEY_F,
-	KEY_H,
-	KEY_J,
-	KEY_K,
-	KEY_L,
-	KEY_V,
-	KEY_R,
-	KEY_RET,
-	KEY_M,
-	KEY_X,
-	KEY_TAB,
-	KEY_1,
-	KEY_2,
-	KEY_3,
-	KEY_4,
-	KEY_5,
-	KEY_6,
-	KEY_7,
-	KEY_8,
-	KEY_9,
-	KEY_0,
-	KEY_Y,
-	KEY_U,
-	KEY_B,
-	KEY_N,
-	KEY_END,
+	KEY_FIX,
+	KEY_LEFT,
+	KEY_DOWN,
+	KEY_UP,
+	KEY_RIGHT,
+	KEY_VERTICAL,
+	KEY_RAISE_LOWER,
+	KEY_TERMINAL,
+	KEY_MENU,
+	KEY_MAXIMIZE,
+	KEY_NEXT,
+	KEY_WS1,
+	KEY_WS2,
+	KEY_WS3,
+	KEY_WS4,
+	KEY_WS5,
+	KEY_WS6,
+	KEY_WS7,
+	KEY_WS8,
+	KEY_WS9,
+	KEY_WS10,
+	KEY_TOPLEFT,
+	KEY_TOPRIGHT,
+	KEY_BOTTOMLEFT,
+	KEY_BOTTOMRIGHT,
+	KEY_KILL,
 	KEY_PREVSCR,
 	KEY_NEXTSCR,
 	KEY_ICONIFY,
@@ -645,7 +645,7 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
 	 * server. Zeroes are used to fill in unused elements within each
 	 * set.
 	 */
-	for (int mask = 0; mask < 8; mask++) {
+	for (int mask = 0; mask < sizeof(masks); mask++) {
 		if (masks[mask] == modmask) {
 			for (uint8_t i = 0; i < reply->keycodes_per_modifier; i++) {
 				if (0 != modmap[mask * reply->keycodes_per_modifier + i]) {
@@ -1084,7 +1084,7 @@ out: ;
 
 	client->geometry = geo;
 
-	/* frame modified (move | resize) */
+	/* frame modified (move || resize) */
 	if (fm)
 		xcb_configure_window(conn, client->frame, frame_value_mask,
 				frame_values);
@@ -1455,7 +1455,7 @@ bool setup_keys(void)
 	}
 
 	/* Now grab the rest of the keys with the MODKEY modifier. */
-	for (i = KEY_F; i < KEY_MAX; i++) {
+	for (i = KEY_FIX; i < KEY_MAX; i++) {
 		if (XK_VoidSymbol == keys[i].keysym) {
 			keys[i].keycode = 0;
 			continue;
@@ -1475,12 +1475,12 @@ bool setup_keys(void)
 		PDEBUG("Grabbing key (%d, with keycode: %d)\n",
 				i, keys[i].keycode);
 		xcb_grab_key(conn, 1, screen->root,
-				MODKEY | (i == KEY_TAB ? 0 : CONTROLMOD),
+				MODKEY | (i == KEY_NEXT ? 0 : CONTROLMOD),
 				keys[i].keycode, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
 
 		/* also grab hjkl with extended modmask */
 		switch (i) {
-			case KEY_H: case KEY_J: case KEY_K: case KEY_L:
+			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
 				xcb_grab_key(conn, 1, screen->root,
 						MODKEY | CONTROLMOD | SHIFTMOD,
 						keys[i].keycode, XCB_GRAB_MODE_ASYNC,
@@ -2759,9 +2759,8 @@ void warp_focuswin(step_direction_t direction)
 	int16_t pointx;
 	int16_t pointy;
 
-	if (! focuswin || focuswin->fullscreen) {
+	if (! focuswin || focuswin->fullscreen)
 		return;
-	}
 
 	xcb_rectangle_t mon;
 	xcb_rectangle_t geo = focuswin->geometry;
@@ -2770,9 +2769,8 @@ void warp_focuswin(step_direction_t direction)
 
 	raise_client(focuswin);
 
-	if (!get_pointer(focuswin->id, &pointx, &pointy)) {
+	if (!get_pointer(focuswin->id, &pointx, &pointy))
 		return;
-	}
 
 	if (direction & step_left)
 		geo.x = mon.x;
@@ -2783,10 +2781,9 @@ void warp_focuswin(step_direction_t direction)
 	if (direction & step_down)
 		geo.y = mon.y + mon.height - (geo.height + conf.borderwidth * 2);
 
-	if (update_geometry(focuswin, &geo)) {
+	if (update_geometry(focuswin, &geo))
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
 				0, 0, 0, 0, pointx, pointy);
-	}
 }
 
 /* Inform client's window about esp. where it is.
@@ -2959,7 +2956,6 @@ void events(void)
 		 * poll() will return if we were interrupted by a signal.
 		 *
 		 */
-
 		if (poll(&in, 1, -1) == -1) {
 			/* We received a signal. Break out of loop. */
 			if (errno == EINTR)
@@ -3254,7 +3250,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 
 key_enum_t key_from_keycode(xcb_keycode_t keycode)
 {
-	for (key_enum_t i = KEY_F; i < KEY_MAX; i++) {
+	for (key_enum_t i = KEY_FIX; i < KEY_MAX; i++) {
 		if (keys[i].keycode && keycode == keys[i].keycode)
 			return i;
 	}
@@ -3270,7 +3266,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 	key_enum_t key = key_from_keycode(e->detail);
 
 	/* First finish tabbing around. Then deal with the next key. */
-	if (is_mode(mode_tab) && key != KEY_TAB)
+	if (is_mode(mode_tab) && key != KEY_NEXT)
 		finish_tab();
 
 	/* TODO impossible -> grabbed keys ? */
@@ -3289,26 +3285,26 @@ void handle_key_press(xcb_generic_event_t *ev)
 	switch (e->state) {
 		/* META */
 		case MODKEY:
-			if (key == KEY_TAB)	/* tab */
+			if (key == KEY_NEXT)	/* tab */
 				focus_next();
 			break;
 
 		/* CTRL + META + SHIFT */
 		case CONTROLMOD | MODKEY | SHIFTMOD:
 			switch (key) {
-				case KEY_H:		/* left */
+				case KEY_LEFT:		/* left */
 					resize_step(focuswin, step_left);
 					break;
 
-				case KEY_J:		/* down */
+				case KEY_DOWN:		/* down */
 					resize_step(focuswin, step_down);
 					break;
 
-				case KEY_K:		/* up */
+				case KEY_UP:		/* up */
 					resize_step(focuswin, step_up);
 					break;
 
-				case KEY_L:		/* right */
+				case KEY_RIGHT:		/* right */
 					resize_step(focuswin, step_right);
 					break;
 
@@ -3320,103 +3316,103 @@ void handle_key_press(xcb_generic_event_t *ev)
 		/* CTRL + META */
 		case CONTROLMOD | MODKEY:
 			switch (key) {
-				case KEY_RET:		/* return */
+				case KEY_TERMINAL:		/* return */
 					start(conf.terminal);
 					break;
 
-				case KEY_M:		/* m */
+				case KEY_MENU:		/* m */
 					start(conf.menu);
 					break;
 
-				case KEY_F:		/* f */
+				case KEY_FIX:		/* f */
 					fix_client(focuswin);
 					break;
 
-				case KEY_H:		/* left */
+				case KEY_LEFT:		/* left */
 					move_step(focuswin, step_left);
 					break;
 
-				case KEY_J:		/* down */
+				case KEY_DOWN:		/* down */
 					move_step(focuswin, step_down);
 					break;
 
-				case KEY_K:		/* up */
+				case KEY_UP:		/* up */
 					move_step(focuswin, step_up);
 					break;
 
-				case KEY_L:		/* right */
+				case KEY_RIGHT:		/* right */
 					move_step(focuswin, step_right);
 					break;
 
-				case KEY_V:		/* v */
+				case KEY_VERTICAL:		/* v */
 					toggle_vertical(focuswin);
 					break;
 
-				case KEY_R:		/* r */
+				case KEY_RAISE_LOWER:		/* r */
 					raise_or_lower_client(focuswin);
 					break;
 
-				case KEY_X:		/* x */
+				case KEY_MAXIMIZE:		/* x */
 					toggle_fullscreen(focuswin);
 					break;
 
-				case KEY_1:
+				case KEY_WS1:
 					change_workspace(0);
 					break;
 
-				case KEY_2:
+				case KEY_WS2:
 					change_workspace(1);
 					break;
 
-				case KEY_3:
+				case KEY_WS3:
 					change_workspace(2);
 					break;
 
-				case KEY_4:
+				case KEY_WS4:
 					change_workspace(3);
 					break;
 
-				case KEY_5:
+				case KEY_WS5:
 					change_workspace(4);
 					break;
 
-				case KEY_6:
+				case KEY_WS6:
 					change_workspace(5);
 					break;
 
-				case KEY_7:
+				case KEY_WS7:
 					change_workspace(6);
 					break;
 
-				case KEY_8:
+				case KEY_WS8:
 					change_workspace(7);
 					break;
 
-				case KEY_9:
+				case KEY_WS9:
 					change_workspace(8);
 					break;
 
-				case KEY_0:
+				case KEY_WS10:
 					change_workspace(9);
 					break;
 
-				case KEY_Y:
+				case KEY_TOPLEFT:
 					warp_focuswin(step_up   | step_left);
 					break;
 
-				case KEY_U:
+				case KEY_TOPRIGHT:
 					warp_focuswin(step_up   | step_right);
 					break;
 
-				case KEY_B:
+				case KEY_BOTTOMLEFT:
 					warp_focuswin(step_down | step_left);
 					break;
 
-				case KEY_N:
+				case KEY_BOTTOMRIGHT:
 					warp_focuswin(step_down | step_right);
 					break;
 
-				case KEY_END:
+				case KEY_KILL:
 					delete_win(focuswin);
 					break;
 
@@ -3451,7 +3447,7 @@ void handle_key_release(xcb_generic_event_t *ev)
 	update_timestamp(e->time);
 
 	/* if we were tabbing, finish */
-	if (is_mode(mode_tab) && key_from_keycode(e->detail) != KEY_TAB)
+	if (is_mode(mode_tab) && key_from_keycode(e->detail) != KEY_NEXT)
 		finish_tab();
 }
 

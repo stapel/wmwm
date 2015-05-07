@@ -646,7 +646,7 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
 	 * server. Zeroes are used to fill in unused elements within each
 	 * set.
 	 */
-	for (int mask = 0; mask < sizeof(masks); mask++) {
+	for (unsigned mask = 0; mask < sizeof(masks); mask++) {
 		if (masks[mask] == modmask) {
 			for (uint8_t i = 0; i < reply->keycodes_per_modifier; i++) {
 				if (modmap[mask * reply->keycodes_per_modifier + i]) {

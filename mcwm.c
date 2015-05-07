@@ -29,6 +29,7 @@
  * 	windows get moved some pixels ?
  * Override-Redirect Windows ? (dock etc.)
  * gprof/gcov?
+ * focuswin/lastfocuswin (remove that last- somehow)
 !* only update geometry after workspace change (or on current) after
    monitor-updates
  * setup keys for single keys (mapping_notify)
@@ -408,7 +409,8 @@ static void handle_property_notify(xcb_generic_event_t*);
 static void handle_colormap_notify(xcb_generic_event_t*);
 
 // RESPONSE_TYPE_MASK is uint_8t (and is only 0x1f, so little waste)
-static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
+//static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
+static void (*handler[]) (xcb_generic_event_t*) = {
 	[0]						= handle_error_event,
 	[XCB_MAP_REQUEST]		= handle_map_request,
 	[XCB_BUTTON_PRESS]		= handle_button_press,
@@ -648,7 +650,7 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
 	for (int mask = 0; mask < sizeof(masks); mask++) {
 		if (masks[mask] == modmask) {
 			for (uint8_t i = 0; i < reply->keycodes_per_modifier; i++) {
-				if (0 != modmap[mask * reply->keycodes_per_modifier + i]) {
+				if (modmap[mask * reply->keycodes_per_modifier + i]) {
 					keycodes.keycodes[i]
 						= modmap[mask * reply->keycodes_per_modifier + i];
 					keycodes.len++;
@@ -977,6 +979,8 @@ int update_geometry(client_t *client,
 	const int border = client->fullscreen ? 0 : conf.borderwidth;
 
 	get_monitor_geometry(client->monitor, &monitor);
+
+	/* XXX: check if geometry or monitor geometry changed (or hints, maybe set a geo changed flag) */
 
 	/* Fullscreen, skip the checks  */
 	if (client->fullscreen) {

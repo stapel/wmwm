@@ -409,8 +409,7 @@ static void handle_property_notify(xcb_generic_event_t*);
 static void handle_colormap_notify(xcb_generic_event_t*);
 
 // RESPONSE_TYPE_MASK is uint_8t (and is only 0x1f, so little waste)
-//static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
-static void (*handler[]) (xcb_generic_event_t*) = {
+static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 	[0]						= handle_error_event,
 	[XCB_MAP_REQUEST]		= handle_map_request,
 	[XCB_BUTTON_PRESS]		= handle_button_press,

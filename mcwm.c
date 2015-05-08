@@ -24,6 +24,8 @@
  */
 
 /* XXX THINGS TODO XXX
+!* race condition on workspace-switch? (mapping/focus)
+   -> ?
  * startup:
  * 	focus (would have to switch ws to make everything work fine)
  * 	windows get moved some pixels ?

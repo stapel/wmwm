@@ -5,3 +5,4 @@ hidden
 DONT_UPDATE
 .clang_complete
 grep_log
+LOG*

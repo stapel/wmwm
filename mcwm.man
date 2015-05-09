@@ -14,13 +14,16 @@ mcwm \- MC's Window Manager for X11.
 .I terminal-program
 ] [ 
 .B \-f 
-.I colour
+.I color
 ] [ 
 .B \-u 
-.I colour
+.I color
 ] [ 
 .B \-x
-.I colour
+.I color
+] [ 
+.B \-X 
+.I color
 ]
 
 .SH DESCRIPTION
@@ -39,13 +42,16 @@ scripts (see below) to get the window mapped again.
 \-t urxvt will start urxvt when MODKEY + Return is pressed. Change to
 your prefered terminal program or something else entirely.
 .PP
-\-f colour sets border colour for focused window to a named colour,
+\-f color sets border color for focused window to a named color,
 such as "red".
 .PP
-\-u colour sets border colour for unfocused windows.
+\-u color sets border color for unfocused windows.
 .PP
-\-x colour sets border colour for fixed windows, that is, windows that
+\-x color sets border color for fixed windows, that is, windows that
 are visible on all workspaces.
+.PP
+\-X color sets border color for unfocused fixed windows, that is
+windows that are visible on all workspaces.
 
 .SH USE
 Nota bene: For mcwm to be at all useful you need to know how what keys

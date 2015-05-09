@@ -54,16 +54,20 @@
 #define MOUSE2 NULL
 #define MOUSE3 NULL
 /*
- * Default colour on border for focused windows. Can be set from
- * command line with "-f colour".
+ * Default color on border for focused windows. Can be set from
+ * command line with "-f color".
  */
 #define FOCUSCOL "#0063ff"
 
-/* Ditto for unfocused. Use "-u colour". */
-#define UNFOCUSCOL "grey50"
+/* Ditto for unfocused. Use "-u color". */
+//#define UNFOCUSCOL "grey50"
+#define UNFOCUSCOL "#001433"
 
-/* Ditto for fixed windows. Use "-x colour". */
+/* Ditto for fixed windows. Use "-x color". */
 #define FIXEDCOL "red"
+
+/* Ditto for unfocused fixed windows. use "-X color" */
+#define FIXEDUFCOL "#660000"
 
 /* Default width of border window, in pixels. Used unless -b width. */
 #define BORDERWIDTH 1

@@ -369,6 +369,7 @@ struct conf {
 	uint32_t focuscol;			/* Focused border color. */
 	uint32_t unfocuscol;		/* Unfocused border color.  */
 	uint32_t fixedcol;			/* Fixed windows border color. */
+	uint32_t fixedufcol;		/* Unfocused fixed windows border color. */
 	bool allowicons;			/* Allow windows to be unmapped. */
 } conf;
 
@@ -2476,7 +2477,10 @@ void update_bordercolor(client_t *client)
 		else
 			color[0] = conf.focuscol;
 	} else {
-		color[0] = conf.unfocuscol;
+		if (client->fixed)
+			color[0] = conf.fixedufcol;
+		else
+			color[0] = conf.unfocuscol;
 	}
 	xcb_change_window_attributes(conn, client->frame,
 		XCB_CW_BORDER_PIXEL, color);
@@ -2686,13 +2690,19 @@ void attach_frame(client_t *client)
 {
 	/* mask and values for frame window */
 	uint32_t	mask = XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
-	uint32_t	values[3] = { conf.unfocuscol, 1, HIDDEN_FRAME_EVENTS};
+
+	uint32_t	values[3] = {
+		client->fixed ? conf.fixedufcol : conf.unfocuscol,
+		1,
+		HIDDEN_FRAME_EVENTS
+	};
 
 	const xcb_rectangle_t *geo = &(client->geometry);
 
 	/* Create new frame window */
 	client->frame = xcb_generate_id(conn);
-	xcb_create_window(conn, screen->root_depth, client->frame, screen->root,
+	xcb_create_window(conn, screen->root_depth, client->frame,
+			screen->root,
 			geo->x, geo->y,
 			geo->width, geo->height,
 			client->fullscreen ? 0 : conf.borderwidth,
@@ -3957,6 +3967,7 @@ int main(int argc, char **argv)
 	char *focuscol;
 	char *unfocuscol;
 	char *fixedcol;
+	char *fixedufcol;
 	xcb_screen_iterator_t iter;
 
 	set_timestamp(XCB_CURRENT_TIME);
@@ -3990,6 +4001,7 @@ int main(int argc, char **argv)
 	focuscol = FOCUSCOL;
 	unfocuscol = UNFOCUSCOL;
 	fixedcol = FIXEDCOL;
+	fixedufcol = FIXEDUFCOL;
 
 	while (1) {
 		ch = getopt(argc, argv, "b:it:f:u:x:");
@@ -4023,6 +4035,10 @@ int main(int argc, char **argv)
 
 			case 'x':
 				fixedcol = optarg;
+				break;
+
+			case 'X':
+				fixedufcol = optarg;
 				break;
 
 			default:
@@ -4063,6 +4079,7 @@ int main(int argc, char **argv)
 	conf.focuscol = getcolor(focuscol);
 	conf.unfocuscol = getcolor(unfocuscol);
 	conf.fixedcol = getcolor(fixedcol);
+	conf.fixedufcol = getcolor(fixedufcol);
 
 	/* setup EWMH */
 	if (! setup_ewmh()) {

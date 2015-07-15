@@ -994,7 +994,7 @@ uint32_t getcolor(const char *colstr)
 	return color;
 }
 
-
+/* Check new geometrys legality, apply hints and update window */
 int update_geometry(client_t *client,
 		const xcb_rectangle_t *geometry)
 {
@@ -1217,7 +1217,6 @@ void new_win(xcb_window_t win)
 	 * Move cursor into the middle of the window so we don't lose the
 	 * pointer to another window.
 	 */
-	/* check when this is actually needed XXX */
 	if (! pointer_over_client(client))
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, win, 0, 0, 0, 0,
 				client->geometry.width / 2, client->geometry.height / 2);
@@ -2173,9 +2172,9 @@ void focus_next(void)
 		 * set keyboard focus to it.
 		 */
 		uint32_t values[] = { XCB_STACK_MODE_TOP_IF };
-
 		xcb_configure_window(conn, client->frame,
 				XCB_CONFIG_WINDOW_STACK_MODE, values);
+
 		if (! pointer_over_client(client)) {
 			xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 					client->geometry.width / 2, client->geometry.height / 2);
@@ -2406,9 +2405,8 @@ void resize_step(client_t *client, step_direction_t direction)
 		ewmh_update_state(client);
 	}
 
-	/* check when this is actually needed XXX */
-
-	if (pointer_over_client(client)) {
+	/* Place pointer in center if the it is not over client anymore */
+	if (! pointer_over_client(client)) {
 		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
 				client->geometry.width / 2, client->geometry.height / 2);
 	}

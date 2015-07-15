@@ -24,8 +24,15 @@
  */
 
 /* XXX THINGS TODO XXX
+!* set CLASS and PID for Window Manager
+ * on tabbing: keep the pointer-position if it is over window
+ * maybe change TAB change order (orig was different)
 !* race condition on workspace-switch? (mapping/focus)
-   -> ?
+   -> ? (maybe not race, sometimes mpv doesn't get focus when spawned
+         via firefox)
+   -> Yes, change that hidden_events stuff! TODO
+ * different color for windows that cannot have inputfocus ?
+ * color: use logic ops for "graying/darken" "normal" colors
  * startup:
  * 	focus (would have to switch ws to make everything work fine)
  * 	windows get moved some pixels ?
@@ -540,6 +547,20 @@ static xcb_timestamp_t get_timestamp() { return current_time; }
 static void set_timestamp(xcb_timestamp_t t) { current_time = t; }
 static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME) current_time = t; }
 
+/* check if pointer is over client */
+bool pointer_over_client(client_t* client)
+{
+	int16_t x,y;
+	get_pointer(screen->root, &x, &y);
+	const xcb_rectangle_t *geo = &client->geometry;
+	// XXX check for workspace and monitor
+
+	return (x => geo->x &&
+			y => geo->y &&
+			x <= geo->width + geo->x &&
+			y <= geo->height + geo->y);
+}
+
 /*
  * Update client's window's atoms
  */
@@ -594,6 +615,7 @@ void finish_tab(void)
 	}
 }
 
+/* XXX: I don't know what that does at all */
 /*
  * Find out what keycode modmask is bound to. Returns a struct. If the
  * len in the struct is 0 something went wrong.
@@ -1194,8 +1216,9 @@ void new_win(xcb_window_t win)
 	 * pointer to another window.
 	 */
 	/* check when this is actually needed XXX */
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, win, 0, 0, 0, 0,
-			client->geometry.width / 2, client->geometry.height / 2);
+	if (! pointer_over_client(client))
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, win, 0, 0, 0, 0,
+				client->geometry.width / 2, client->geometry.height / 2);
 }
 
 /*
@@ -1482,14 +1505,17 @@ bool setup_keys(void)
 				i, keys[i].keycode);
 		xcb_grab_key(conn, 1, screen->root,
 				MODKEY | (i == KEY_NEXT ? 0 : CONTROLMOD),
-				keys[i].keycode, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+				keys[i].keycode,
+				XCB_GRAB_MODE_ASYNC,
+				XCB_GRAB_MODE_ASYNC);
 
 		/* also grab hjkl with extended modmask */
 		switch (i) {
 			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
 				xcb_grab_key(conn, 1, screen->root,
 						MODKEY | CONTROLMOD | SHIFTMOD,
-						keys[i].keycode, XCB_GRAB_MODE_ASYNC,
+						keys[i].keycode,
+						XCB_GRAB_MODE_ASYNC,
 						XCB_GRAB_MODE_ASYNC);
 				PDEBUG("Grabbing key (%d, with keycode: %d)\n",
 					i, keys[i].keycode);
@@ -2148,9 +2174,10 @@ void focus_next(void)
 
 		xcb_configure_window(conn, client->frame,
 				XCB_CONFIG_WINDOW_STACK_MODE, values);
-	/* check when this is actually needed XXX */
-		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
-				client->geometry.width / 2, client->geometry.height / 2);
+		if (! pointer_over_client(client)) {
+			xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
+					client->geometry.width / 2, client->geometry.height / 2);
+		}
 		set_focus(client);
 	}
 }
@@ -2249,9 +2276,12 @@ void set_focus(client_t *client)
 	}
 
 	/* Don't bother focusing on the same window that already has focus */
-	if (client == focuswin) {
+	if (client == focuswin)
 		return;
-	}
+
+	/* Don't bother if the client is not on this workspace */
+	if (! client->wsitem[curws])
+		return;
 
 	/* set input focus (preferred) or
 	 * send WM_TAKE_FOCUS
@@ -2375,8 +2405,11 @@ void resize_step(client_t *client, step_direction_t direction)
 	}
 
 	/* check when this is actually needed XXX */
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
-			client->geometry.width / 2, client->geometry.height / 2);
+
+	if (pointer_over_client(client)) {
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
+				client->geometry.width / 2, client->geometry.height / 2);
+	}
 }
 
 /*
@@ -2515,9 +2548,10 @@ void unmax(client_t *client)
 	ewmh_frame_extents(client->id, conf.borderwidth);
 
 	/* Warp pointer to window or we might lose it. */
-	/* check when this is actually needed XXX */
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
-			client->geometry.width / 2, client->geometry.height / 2);
+	if (! pointer_over_client(client)) {
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
+				client->geometry.width / 2, client->geometry.height / 2);
+	}
 }
 
 void toggle_fullscreen(client_t *client)
@@ -3285,6 +3319,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 		finish_tab();
 
 	/* TODO impossible -> grabbed keys ? */
+	/* XXX: This happens for Meta_L/Alt_L */
 	if (key == KEY_MAX) {
 		PERROR("Unknown key pressed (state %d - key %d).\n", e->state, e->detail);
 
@@ -4161,6 +4196,8 @@ void set_input_focus(xcb_window_t win)
 		if (pointer) {
 			win = pointer->child;
 			destroy(pointer);
+		} else {
+			PDEBUG("Did not find window under cursor.\n");
 		}
 	}
 	set_focus(find_clientp(win));

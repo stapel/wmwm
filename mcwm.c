@@ -548,15 +548,17 @@ static void set_timestamp(xcb_timestamp_t t) { current_time = t; }
 static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME) current_time = t; }
 
 /* check if pointer is over client */
+/* XXX check for workspace and monitor */
 bool pointer_over_client(client_t* client)
 {
 	int16_t x,y;
-	get_pointer(screen->root, &x, &y);
 	const xcb_rectangle_t *geo = &client->geometry;
-	// XXX check for workspace and monitor
 
-	return (x => geo->x &&
-			y => geo->y &&
+	if (! get_pointer(screen->root, &x, &y))
+		return false;
+
+	return (x >= geo->x &&
+			y >= geo->y &&
 			x <= geo->width + geo->x &&
 			y <= geo->height + geo->y);
 }

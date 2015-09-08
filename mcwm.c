@@ -3356,11 +3356,11 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_DOWN:		/* down */
-					resize_step(focuswin, step_down);
+					resize_step(focuswin, step_up);
 					break;
 
 				case KEY_UP:		/* up */
-					resize_step(focuswin, step_up);
+					resize_step(focuswin, step_down);
 					break;
 
 				case KEY_RIGHT:		/* right */

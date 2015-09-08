@@ -11,18 +11,20 @@
  * keyboard. Default is Mod4, which on my keyboard is the Alt key but
  * is usually the Windows key on more normal keyboard layouts.
  */
-#define MODKEY XCB_MOD_MASK_1
+/* XXX: These three all have to be different for now */
+#define MODKEY (XCB_MOD_MASK_1 | XCB_MOD_MASK_CONTROL)
 
 /* Extra modifier for resizing. Default is Shift. */
-#define SHIFTMOD XCB_MOD_MASK_SHIFT
+#define EXTRA_MODKEY (MODKEY | XCB_MOD_MASK_SHIFT)
 
-#define CONTROLMOD XCB_MOD_MASK_CONTROL
+/* ALT for ALT+TAB next window */
+#define NEXT_MODKEY XCB_MOD_MASK_1
 
 /*
  * Modifier key to use with mouse buttons. Default Mod1, Meta on my
  * keyboard.
  */
-#define MOUSEMODKEY XCB_MOD_MASK_1
+#define MOUSE_MODKEY XCB_MOD_MASK_1
 
 /*
  * Start this program when pressing MODKEY + USERKEY_TERMINAL. Needs

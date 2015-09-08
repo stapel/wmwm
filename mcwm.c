@@ -24,6 +24,8 @@
  */
 
 /* XXX THINGS TODO XXX
+ * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
+!* CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
 !* set CLASS and PID for Window Manager
  * on tabbing: keep the pointer-position if it is over window
  * maybe change TAB change order (orig was different)
@@ -37,6 +39,7 @@
  * 	focus (would have to switch ws to make everything work fine)
  * 	windows get moved some pixels ?
  * Override-Redirect Windows ? (dock etc.)
+ 	what about them going off-screen?
  * gprof/gcov?
  * focuswin/lastfocuswin (remove that last- somehow)
 !* only update geometry after workspace change (or on current) after
@@ -1474,15 +1477,15 @@ bool setup_keys(void)
 	 * Find out what keys generates our MODKEY mask. Unfortunately it
 	 * might be several keys.
 	 */
-	if (modkeys.keycodes) {
-		destroy(modkeys.keycodes);
-	}
-	modkeys = get_modkeys(MODKEY);
+//	if (modkeys.keycodes) {
+//		destroy(modkeys.keycodes);
+//	}
+//	modkeys = get_modkeys(MODKEY);
 
-	if (0 == modkeys.len) {
-		PERROR("We couldn't find any keycodes to our main modifierkey! \n");
-		return false;
-	}
+//	if (0 == modkeys.len) {
+//		PERROR("We couldn't find any keycodes to our main modifierkey! \n");
+//		return false;
+//	}
 
 	/* Now grab the rest of the keys with the MODKEY modifier. */
 	for (i = KEY_FIX; i < KEY_MAX; i++) {
@@ -1494,32 +1497,38 @@ bool setup_keys(void)
 		keys[i].keycode = keysym_to_keycode(keys[i].keysym, keysyms);
 		if (0 == keys[i].keycode) {
 			/* Couldn't set up keys! */
-
 			/* Get rid of key symbols. */
 			xcb_key_symbols_free(keysyms);
 			PDEBUG(".. couldn't setup keys\n");
 			return false;
 		}
 
-		/* Grab other keys with a modifier mask. */
-		PDEBUG("Grabbing key (%d, with keycode: %d)\n",
-				i, keys[i].keycode);
-		xcb_grab_key(conn, 1, screen->root,
-				MODKEY | (i == KEY_NEXT ? 0 : CONTROLMOD),
-				keys[i].keycode,
-				XCB_GRAB_MODE_ASYNC,
-				XCB_GRAB_MODE_ASYNC);
-
-		/* also grab hjkl with extended modmask */
 		switch (i) {
-			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
+			case KEY_NEXT:
 				xcb_grab_key(conn, 1, screen->root,
-						MODKEY | CONTROLMOD | SHIFTMOD,
+						NEXT_MODKEY,
+						keys[i].keycode,
+						XCB_GRAB_MODE_ASYNC,
+						XCB_GRAB_MODE_ASYNC);
+				break;
+			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
+				/* grab hjkl with extended modmask for resizing */
+				xcb_grab_key(conn, 1, screen->root,
+						EXTRA_MODKEY,
 						keys[i].keycode,
 						XCB_GRAB_MODE_ASYNC,
 						XCB_GRAB_MODE_ASYNC);
 				PDEBUG("Grabbing key (%d, with keycode: %d)\n",
 					i, keys[i].keycode);
+			default:
+				xcb_grab_key(conn, 1, screen->root,
+						MODKEY,
+						keys[i].keycode,
+						XCB_GRAB_MODE_ASYNC,
+						XCB_GRAB_MODE_ASYNC);
+				PDEBUG("Grabbing key (%d, with keycode: %d)\n",
+					i, keys[i].keycode);
+
 		}
 	} /* for */
 
@@ -3334,13 +3343,13 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	switch (e->state) {
 		/* META */
-		case MODKEY:
+		case NEXT_MODKEY:
 			if (key == KEY_NEXT)	/* tab */
 				focus_next();
 			break;
 
 		/* CTRL + META + SHIFT */
-		case CONTROLMOD | MODKEY | SHIFTMOD:
+		case EXTRA_MODKEY:
 			switch (key) {
 				case KEY_LEFT:		/* left */
 					resize_step(focuswin, step_left);
@@ -3364,7 +3373,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 			break;
 
 		/* CTRL + META */
-		case CONTROLMOD | MODKEY:
+		case MODKEY:
 			switch (key) {
 				case KEY_TERMINAL:		/* return */
 					start(conf.terminal);
@@ -4147,19 +4156,19 @@ int main(int argc, char **argv)
 			| XCB_EVENT_MASK_BUTTON_RELEASE,
 			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, root,
 			XCB_NONE, 1 /* left mouse button */ ,
-			MOUSEMODKEY);
+			MOUSE_MODKEY);
 
 	xcb_grab_button(conn, 0, root, XCB_EVENT_MASK_BUTTON_PRESS
 			| XCB_EVENT_MASK_BUTTON_RELEASE,
 			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, root,
 			XCB_NONE, 2 /* middle mouse button */ ,
-			MOUSEMODKEY);
+			MOUSE_MODKEY);
 
 	xcb_grab_button(conn, 0, root, XCB_EVENT_MASK_BUTTON_PRESS
 			| XCB_EVENT_MASK_BUTTON_RELEASE,
 			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, root,
 			XCB_NONE, 3 /* right mouse button */ ,
-			MOUSEMODKEY);
+			MOUSE_MODKEY);
 
 	/* why can't I put this before setup_screen ? XXX */
 	/* Subscribe to events. */

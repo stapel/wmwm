@@ -24,6 +24,9 @@
  */
 
 /* XXX THINGS TODO XXX
+!* it happened once that I could not toggle between all visible windows
+ * inactive border color (allow to choose and/or dim inactive from active)
+ * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
  * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
 !* CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
 !* set CLASS and PID for Window Manager

@@ -23,10 +23,20 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+
+/*
+ * CURRENT WORKING ON TODO THINGS
+ * ------------------------------
+ *
+ * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
+ */
+
 /* XXX THINGS TODO XXX
+ * -------------------
+!* clients when WM restarts?
+!* I had 20T VM usage?
 !* it happened once that I could not toggle between all visible windows
  * inactive border color (allow to choose and/or dim inactive from active)
- * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
  * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
 !* CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
 !* set CLASS and PID for Window Manager
@@ -1180,7 +1190,11 @@ void new_win(xcb_window_t win)
 	 * If the client doesn't say the user specified the coordinates
 	 * for the window we map it where our pointer is instead.
 	 */
-	if (! client->usercoord) {
+	if (client->usercoord) {
+		geometry.x = client->hints.x;
+		geometry.y = client->hints.y;
+		PDEBUG("User set coordinates: %d,%x.\n", geometry.x, geometry.y);
+	} else {
 		int16_t pointx;
 		int16_t pointy;
 
@@ -1193,8 +1207,6 @@ void new_win(xcb_window_t win)
 			geometry.y = 0;
 		}
 		PDEBUG("Coordinates not set by user. Using: %d,%d.\n", pointx, pointy);
-	} else {
-		PDEBUG("User set coordinates.\n");
 	}
 
 	/* Find the physical output this window will be on if RANDR is active. */
@@ -1732,7 +1744,7 @@ bool setup_screen(void)
 }
 void ewmh_frame_extents(xcb_window_t win, int width)
 {
-	long data[] = { width, width, width, width };
+	uint32_t data[] = { width, width, width, width };
 	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, win, ewmh->_NET_FRAME_EXTENTS,
 			XCB_ATOM_CARDINAL, 32, 4, &data);
 }
@@ -2656,7 +2668,7 @@ void set_hidden_events(client_t *client)
 /* show client */
 void show(client_t *client)
 {
-	long data[] = { XCB_ICCCM_WM_STATE_NORMAL, XCB_NONE };
+	uint32_t data[] = { XCB_ICCCM_WM_STATE_NORMAL, XCB_NONE };
 
 	/* Map window and declare normal */
 	xcb_map_window(conn, client->id);
@@ -2671,7 +2683,7 @@ void show(client_t *client)
 /* send window into iconic mode and hide */
 void hide(client_t *client)
 {
-	long data[] = { XCB_ICCCM_WM_STATE_ICONIC, XCB_NONE };
+	uint32_t data[] = { XCB_ICCCM_WM_STATE_ICONIC, XCB_NONE };
 
 	/*
 	 * Unmap window and declare iconic.
@@ -4180,10 +4192,10 @@ int main(int argc, char **argv)
 	cookie = xcb_change_window_attributes_checked(conn, root, mask, values);
 	error = xcb_request_check(conn, cookie);
 	if (error) {
-		PERROR("Can't get SUBSTRUCTURE REDIRECT. "
-				"Another window manager running? Exiting.\n");
 		print_x_error(error);
 		destroy(error);
+		PERROR("Can't get SUBSTRUCTURE REDIRECT. "
+				"Another window manager running? Exiting.\n");
 		xcb_disconnect(conn);
 		exit(1);
 	}

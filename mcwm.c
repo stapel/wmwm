@@ -33,6 +33,11 @@
 
 /* XXX THINGS TODO XXX
  * -------------------
+ * size hints are minus border etc, maybe check for others as well
+ * size hints position and size are obsolete
+ * better handling of atoms (ewmh,icccm) and their usage
+   (cut xcb_ewmh ext?)
+!* XXX user/program specified size
 !* clients when WM restarts?
 !* I had 20T VM usage?
 !* it happened once that I could not toggle between all visible windows
@@ -40,7 +45,6 @@
  * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
 !* CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
 !* set CLASS and PID for Window Manager
- * on tabbing: keep the pointer-position if it is over window
  * maybe change TAB change order (orig was different)
 !* race condition on workspace-switch? (mapping/focus)
    -> ? (maybe not race, sometimes mpv doesn't get focus when spawned
@@ -1189,11 +1193,16 @@ void new_win(xcb_window_t win)
 	/*
 	 * If the client doesn't say the user specified the coordinates
 	 * for the window we map it where our pointer is instead.
+	 * Or to the center of the monitor out pointer is on.
 	 */
 	if (client->usercoord) {
+#if 0
+		/* hints.x,y are obsolete and often not used, in that case just use
+		 x,y given in initialization */
 		geometry.x = client->hints.x;
 		geometry.y = client->hints.y;
-		PDEBUG("User set coordinates: %d,%x.\n", geometry.x, geometry.y);
+#endif
+		PDEBUG("User set coordinates: %d,%d\n", geometry.x, geometry.y);
 	} else {
 		int16_t pointx;
 		int16_t pointy;
@@ -1206,21 +1215,20 @@ void new_win(xcb_window_t win)
 			geometry.x = 0;
 			geometry.y = 0;
 		}
-		PDEBUG("Coordinates not set by user. Using: %d,%d.\n", pointx, pointy);
+		PDEBUG("Coordinates not set by user. Using: %d,%d.\n",
+				pointx, pointy);
 	}
 
-	/* Find the physical output this window will be on if RANDR is active. */
+	/* Find the physical output this window will be on if RANDR
+	   is active. */
 	if (-1 != randrbase) {
-		client->monitor = find_monitor_at(client->geometry.x,
-				client->geometry.y);
+		client->monitor = find_monitor_at(geometry.x, geometry.y);
 		if (! client->monitor) {
 			/*
 			 * Window coordinates are outside all physical monitors.
 			 * Choose the first screen.
 			 */
-			if (monlist) {
-				client->monitor = monlist->data;
-			}
+			if (monlist) client->monitor = monlist->data;
 		}
 	}
 
@@ -1232,7 +1240,7 @@ void new_win(xcb_window_t win)
 	show(client);
 
 	/*
-	 * Move cursor into the middle of the window so we don't lose the
+	 * Move cursor over the window so we don't lose the
 	 * pointer to another window.
 	 */
 	if (! pointer_over_client(client))

@@ -23,16 +23,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-
-/*
- * CURRENT WORKING ON TODO THINGS
- * ------------------------------
- *
- * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
- */
-
 /* XXX THINGS TODO XXX
  * -------------------
+ * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
+ * (if wmwm starts? and) something is fullscreen, maybe use hints for
+   unfullscreen state
+ * retroarch looses focus on quit
  * size hints are minus border etc, maybe check for others as well
  * size hints position and size are obsolete
  * better handling of atoms (ewmh,icccm) and their usage

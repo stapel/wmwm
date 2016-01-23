@@ -1,4 +1,5 @@
 /* User configurable stuff. */
+#include <X11/keysym.h>
 
 /*
  * Move this many pixels when moving or resizing with keyboard unless

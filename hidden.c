@@ -22,14 +22,18 @@
  * Does not work anymore because this is a reparenting WM now!
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <string.h>
-#include <getopt.h>
-#include <xcb/xcb.h>
-#include <xcb/xcb_ewmh.h>
-#include <xcb/xcb_icccm.h>
+#include <getopt.h>         // for getopt
+#include <stdbool.h>        // for false, bool, true
+#include <stdint.h>         // for uint32_t, int32_t
+#include <stdio.h>          // for NULL, printf, fprintf, perror, stderr
+#include <stdlib.h>         // for exit, calloc, free
+#include <string.h>         // for memcpy, strlen
+
+#include <xcb/xcb.h>        // for xcb_disconnect, xcb_connect, xcb_get_setup
+#include <xcb/xcb_ewmh.h>   // for xcb_ewmh_get_utf8_strings_reply_t, xcb_ew...
+#include <xcb/xcb_icccm.h>  // for xcb_icccm_get_text_property_reply_t, xcb_...
+#include <xcb/xproto.h>     // for xcb_window_t, xcb_atom_t, xcb_get_propert...
+
 
 xcb_connection_t *conn;
 xcb_screen_t *screen;

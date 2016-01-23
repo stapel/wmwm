@@ -25,6 +25,7 @@
 
 /* XXX THINGS TODO XXX
  * -------------------
+ * jdownloader2 seems to fuck up focus
  * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
  * (if wmwm starts? and) something is fullscreen, maybe use hints for
    unfullscreen state
@@ -82,38 +83,36 @@
 		|| e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_NONE)
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <errno.h>
-#include <getopt.h>
-#include <string.h>
-#include <signal.h>
+#include <errno.h>            // for EINTR, errno
+#include <getopt.h>           // for optarg, getopt
+#include <poll.h>             // for pollfd, poll, POLLIN
+#include <signal.h>           // for signal, SIG_DFL, SIG_ERR, SIGCHLD, SIGINT
+#include <stdbool.h>          // for false, bool, true
+#include <stdint.h>           // for uint32_t, uint16_t, uint8_t, int16_t
+#include <stdio.h>            // for NULL, fprintf, stderr, perror, printf
+#include <stdlib.h>           // for free, exit, calloc, atoi, strtoul
+#include <string.h>           // for strlen, memset, strcpy, strncpy
+#include <unistd.h>           // for execvp, fork, setsid, pid_t
 
-#include <poll.h>
+#include <X11/keysymdef.h>    // for XK_VoidSymbol
 
-#include <xcb/xcb.h>
-#include <xcb/xproto.h>
-#include <xcb/xcb_aux.h>
-#include <xcb/randr.h>
-#include <xcb/shape.h>
-#include <xcb/xcb_event.h>
+#include <xcb/xcb.h>          // for xcb_generic_event_t, xcb_generic_error_t
+#include <xcb/randr.h>        // for xcb_randr_get_crtc_info_reply_t, xcb_ra...
+#include <xcb/shape.h>        // for xcb_shape_notify_event_t, xcb_shape_com...
+#include <xcb/xcb_event.h>    // for xcb_event_get_error_label, xcb_event_ge...
+#include <xcb/xcb_ewmh.h>     // for xcb_ewmh_connection_t, xcb_ewmh_set_act...
+#include <xcb/xcb_icccm.h>    // for xcb_size_hints_t, ::XCB_ICCCM_SIZE_HINT...
+#include <xcb/xcb_keysyms.h>  // for xcb_key_symbols_free, xcb_key_symbols_t
+#include <xcb/xinput.h>       // for xcb_input_device_motion_notify_event_t
+#include <xcb/xproto.h>       // for xcb_rectangle_t, xcb_screen_t, xcb_atom_t
 
-#include <xcb/xinput.h>
-#include <xcb/xcb_keysyms.h>
+/* list functions */
+#include "list.h"             // for item_t, additem, movetohead, freeitem
 
-#include <xcb/xcb_atom.h>
-#include <xcb/xcb_icccm.h>
-#include <xcb/xcb_ewmh.h>
-
-#include <X11/keysym.h>
-
-#include "list.h"
 
 /* Check here for user configurable parts: */
 #include "config.h"
+
 
 #define PERROR(Args...) \
 	do { fprintf(stderr, "ERROR mcwm: "); fprintf(stderr, ##Args); } while(0)

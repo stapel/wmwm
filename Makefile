@@ -1,21 +1,20 @@
-VERSION=20120124
-DIST=mcwm-$(VERSION)
-SRC=mcwm.c list.c config.h list.h
-DISTFILES=LICENSE Makefile NEWS README TODO WISHLIST mcwm.man $(SRC)
+VERSION=20160227
+DIST=wmwm-$(VERSION)
+SRC=wmwm.c list.c config.h list.h hidden.c
+DISTFILES=LICENSE Makefile wmwm.man hidden.man $(SRC)
 
 #CC=clang
-debug=1
+#debug=0
 CC ?= gcc
 
-CFLAGS += -fdiagnostics-color=always
-CFLAGS += $(ETCFLAGS) -std=c99 -I/usr/local/include -Wall -Wextra -fstack-protector-all -pedantic -g -O3 -Wno-variadic-macros -fPIC -D_FORTIFY_SOURCE=2
+CFLAGS += -std=c11 -Wall -Wextra -pedantic -O2 -Wno-variadic-macros
 
 ifeq ($(debug),1)
-	CFLAGS += -DDEBUG -Wno-format-extra-args -O1 -fsanitize=address -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined
+	CFLAGS += -g -DDEBUG -Wno-format-extra-args -O1 -fsanitize=address -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined
 endif
 
 
-LDFLAGS += $(ETCFLAGS) -L/usr/local/lib -lxcb -lxcb-ewmh -lxcb-randr\
+LDFLAGS += -L/usr/local/lib -lxcb -lxcb-ewmh -lxcb-randr\
 		   -lxcb-keysyms -lxcb-icccm -lxcb-util -lxcb-shape
 
 ifeq ($(coverage),1)
@@ -23,42 +22,42 @@ ifeq ($(coverage),1)
 	LDFLAGS += -coverage
 endif
 
-RM=/bin/rm
-PREFIX=/usr/local
+RM = /bin/rm
+PREFIX ?= /usr/local
 
-TARGETS=mcwm hidden
-OBJS=mcwm.o list.o
+TARGETS=wmwm hidden
+OBJS=wmwm.o list.o
 
 all: $(TARGETS)
 
-mcwm: $(OBJS)
+wmwm: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-mcwm-static: $(OBJS)
+wmwm-static: $(OBJS)
 	$(CC) -o $@ $(OBJS) -static $(CFLAGS) $(LDFLAGS) \
 	-lXau -lXdmcp
 
-mcwm.o: mcwm.c list.h config.h Makefile
+wmwm.o: wmwm.c list.h config.h Makefile
 
 list.o: list.c list.h Makefile
 
 install: $(TARGETS)
-	install -m 755 mcwm $(PREFIX)/bin
-	install -m 644 mcwm.man $(PREFIX)/man/man1/mcwm.1
-	install -m 755 hidden $(PREFIX)/bin
-	install -m 644 hidden.man $(PREFIX)/man/man1/hidden.1
+	install -D -m 755 wmwm $(DESTDIR)/$(PREFIX)/bin/wmwm
+	install -D -m 644 wmwm.man $(DESTDIR)/$(PREFIX)/man/man1/wmwm.1
+	install -D -m 755 hidden $(DESTDIR)/$(PREFIX)/bin/hidden
+	install -D -m 644 hidden.man $(DESTDIR)/$(PREFIX)/man/man1/hidden.1
 
 uninstall: deinstall
 deinstall:
-	$(RM) $(PREFIX)/bin/mcwm
-	$(RM) $(PREFIX)/man/man1/mcwm.1
+	$(RM) $(PREFIX)/bin/wmwm
+	$(RM) $(PREFIX)/man/man1/wmwm.1
 	$(RM) $(PREFIX)/bin/hidden
 	$(RM) $(PREFIX)/man/man1/hidden.1
 
 $(DIST).tar.bz2:
 	mkdir $(DIST)
-	cp $(DISTFILES) $(DIST)/
-	tar cf $(DIST).tar --exclude .git $(DIST)
+	cp -v $(DISTFILES) $(DIST)/
+	tar cvf $(DIST).tar --exclude .git $(DIST)
 	bzip2 -9 $(DIST).tar
 	$(RM) -rf $(DIST)
 

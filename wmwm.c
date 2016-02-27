@@ -1,3 +1,5 @@
+/* wmwm, mcwm fork */
+
 /*
  * mcwm, a small window manager for the X Window System using the X
  * protocol C Binding libraries.
@@ -115,11 +117,11 @@
 
 
 #define PERROR(Args...) \
-	do { fprintf(stderr, "ERROR mcwm: "); fprintf(stderr, ##Args); } while(0)
+	do { fprintf(stderr, "ERROR wmwm: "); fprintf(stderr, ##Args); } while(0)
 
 #ifdef DEBUG
 #define PDEBUG(Args...) \
-	do { fprintf(stderr, "mcwm: "); fprintf(stderr, ##Args); } while(0)
+	do { fprintf(stderr, "wmwm: "); fprintf(stderr, ##Args); } while(0)
 #define D(x) x
 #else
 #define PDEBUG(Args...)
@@ -836,7 +838,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		for (uint32_t i = 0; i < WORKSPACES; i++) {
 			if (! client->wsitem[i]) {
 				if ((item = additem(&wslist[i])) == NULL) {
-					perror("mcwm");
+					perror("wmwm");
 					return;
 				}
 				client->wsitem[i] = item;
@@ -856,7 +858,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
 			/* add to destined workspace */
 			if ((item = additem(&wslist[ws])) == NULL) {
-				perror("mcwm");
+				perror("wmwm");
 				return;
 			}
 			client->wsitem[ws] = item;
@@ -1467,7 +1469,7 @@ xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym, xcb_key_symbols_t * keysyms
 	/* We only use the first keysymbol, even if there are more. */
 	keyp = xcb_key_symbols_get_keycode(keysyms, keysym);
 	if (! keyp) {
-		PERROR("mcwm: Couldn't look up key. Exiting.\n");
+		PERROR("wmwm: Couldn't look up key. Exiting.\n");
 		exit(1);
 	}
 
@@ -1630,7 +1632,7 @@ bool setup_ewmh(void)
 	xcb_ewmh_set_supported(ewmh, screen_number,
 			sizeof(atoms)/sizeof(xcb_atom_t), atoms);
 
-	xcb_ewmh_set_wm_name(ewmh, screen->root, 4, "mcwm");
+	xcb_ewmh_set_wm_name(ewmh, screen->root, 4, "wmwm");
 	xcb_ewmh_set_supporting_wm_check(ewmh, screen->root, screen->root);
 	xcb_ewmh_set_number_of_desktops(ewmh, screen_number, WORKSPACES);
 	xcb_ewmh_set_active_window(ewmh, screen_number, 0);
@@ -1894,7 +1896,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 			name = NULL;
 		} else {
 			if (!(name = calloc(name_len + 1, sizeof(char)))) {
-				perror("mcwm outputs");
+				perror("wmwm outputs");
 				cleanup(1);
 			}
 			strncpy(name, (char*)xcb_randr_get_output_info_name(output), name_len);
@@ -2097,12 +2099,12 @@ monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 	monitor_t *mon;
 
 	if (! (item = additem(&monlist))) {
-		perror("mcwm add_monitor");
+		perror("wmwm add_monitor");
 		return NULL;
 	}
 
 	if (! (mon = calloc(1, sizeof(monitor_t)))) {
-		perror("mcwm add_monitor");
+		perror("wmwm add_monitor");
 		return NULL;
 	}
 
@@ -3036,7 +3038,7 @@ void events(void)
 			/* We received a signal. Break out of loop. */
 			if (errno == EINTR)
 				break;
-			perror("mcwm poll()");
+			perror("wmwm poll()");
 			cleanup(1);
 		}
 
@@ -3089,7 +3091,7 @@ void events(void)
 /* Generic Xerror printer */
 void print_x_error(xcb_generic_error_t *e)
 {
-	PERROR("mcwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
+	PERROR("wmwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
 		xcb_event_get_error_label(e->error_code),
 		xcb_event_get_request_label(e->major_code),
 		e->error_code,
@@ -3863,7 +3865,7 @@ void handle_mapping_notify(xcb_generic_event_t *ev)
 
 	/* Use the new ones. */
 	if (! setup_keys()) {
-		PERROR("mcwm: Couldn't set up keycodes. Exiting.");
+		PERROR("wmwm: Couldn't set up keycodes. Exiting.");
 		cleanup(1);
 	}
 }
@@ -3932,14 +3934,19 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 
 void print_help(void)
 {
-	printf("mcwm: Usage: mcwm [-b] [-t terminal-program] [-f color] "
-			"[-u color] [-x color] \n");
-	printf("  -b means draw no borders\n");
-	printf("  -t urxvt will start urxvt when MODKEY + Return is pressed\n");
-	printf("  -f color sets color for focused window borders of focused "
-			"to a named color.\n");
-	printf("  -u color sets color for unfocused window borders.");
-	printf("  -x color sets color for fixed window borders.");
+	printf("Usage: wmwm [-b width] [-t terminal] [-m menu]"
+			"[-f color] [-F color] [-x color] [-X color]\n");
+	printf("\n");
+	printf("  -b width\tborder width\n");
+	printf("  -t terminal\tstart terminal with MODKEY + Return\n");
+	printf("  -m menu\tstart menu with MODKEY + m\n");
+	printf("  -f color\tfocused window border color\n");
+	printf("  -F color\tunfocused window border color\n");
+	printf("  -x color\tfixed focused window border color\n");
+	printf("  -X color\tfixed unfocused window border color\n");
+	printf("\n");
+	printf("color may be either a named color or in #000000 notation\n");
+	printf("\n");
 }
 
 void signal_catch(int sig)
@@ -4040,17 +4047,17 @@ int main(int argc, char **argv)
 
 	/* We ignore child exists. Don't create zombies. */
 	if (SIG_ERR == signal(SIGCHLD, SIG_IGN)) {
-		perror("mcwm: signal");
+		perror("wmwm: signal");
 		exit(1);
 	}
 
 	if (SIG_ERR == signal(SIGINT, signal_catch)) {
-		perror("mcwm: signal");
+		perror("wmwm: signal");
 		exit(1);
 	}
 
 	if (SIG_ERR == signal(SIGTERM, signal_catch)) {
-		perror("mcwm: signal");
+		perror("wmwm: signal");
 		exit(1);
 	}
 
@@ -4065,44 +4072,32 @@ int main(int argc, char **argv)
 	fixedcol = FIXEDCOL;
 	fixedufcol = FIXEDUFCOL;
 
-	while (1) {
-		ch = getopt(argc, argv, "b:it:f:u:x:");
-		if (-1 == ch) {
-
-			/* No more options, break out of while loop. */
-			break;
-		}
-
+	while ((ch = getopt(argc, argv, "b:it:m:f:F:x:X:")) != -1) {
 		switch (ch) {
 			case 'b':
-				/* Border width */
 				conf.borderwidth = atoi(optarg);
 				break;
-
 			case 'i':
 				conf.allowicons = true;
 				break;
-
 			case 't':
 				conf.terminal = optarg;
 				break;
-
+			case 'm':
+				conf.menu = optarg;
+				break;
 			case 'f':
 				focuscol = optarg;
 				break;
-
-			case 'u':
+			case 'F':
 				unfocuscol = optarg;
 				break;
-
 			case 'x':
 				fixedcol = optarg;
 				break;
-
 			case 'X':
 				fixedufcol = optarg;
 				break;
-
 			default:
 				print_help();
 				exit(0);

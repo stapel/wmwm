@@ -3,26 +3,26 @@
 wmwm \- fork of MC's Window Manager for X11 mcwm.
 .SH SYNOPSIS
 .B wmwm
-[ 
-.B \-b 
+[
+.B \-b
 ] width
-[ 
+[
 .B \-i
 ]
-[ 
-.B \-t 
+[
+.B \-t
 .I terminal-program
-] [ 
-.B \-f 
+] [
+.B \-f
 .I color
-] [ 
-.B \-u 
+] [
+.B \-u
 .I color
-] [ 
+] [
 .B \-x
 .I color
-] [ 
-.B \-X 
+] [
+.B \-X
 .I color
 ]
 
@@ -33,7 +33,7 @@ wmwm \- fork of MC's Window Manager for X11 mcwm.
 .PP
 \-b width sets border width to this many pixels.
 .PP
-\-i turns on icons/hidden windows. 
+\-i turns on icons/hidden windows.
 .B Please note
 that there is no way from wmwm to get a hidden window back! You have
 to use an external program such as a panel or the mcicon or 9icon
@@ -45,7 +45,7 @@ your prefered terminal program or something else entirely.
 \-f color sets border color for focused window to a named color,
 such as "red".
 .PP
-\-u color sets border color for unfocused windows.
+\-F color sets border color for unfocused windows.
 .PP
 \-x color sets border color for fixed windows, that is, windows that
 are visible on all workspaces.
@@ -83,37 +83,37 @@ is a feature, not a bug.
 Mod4 + key on focused window:
 .RS
 .IP \(bu 2
-.B r 
+.B r
 raise or lower (toggles).
 .IP \(bu 2
-.B x 
+.B x
 maximize (toggles).
 .IP \(bu 2
-.B m 
+.B v
 maximize vertically (toggles).
 .IP \(bu 2
-.B H 
+.B H
 resize left.
 .IP \(bu 2
-.B J 
+.B J
 resize down.
 .IP \(bu 2
-.B K 
+.B K
 resize up.
 .IP \(bu 2
 .B L
 resize right.
 .IP \(bu 2
-.B h 
+.B h
 move left.
 .IP \(bu 2
-.B j 
+.B j
 move down.
 .IP \(bu 2
-.B k 
+.B k
 move up.
 .IP \(bu 2
-.B l 
+.B l
 move right.
 .IP \(bu 2
 .B y
@@ -131,6 +131,9 @@ move to lower right corner of monitor.
 .B Return
 start terminal or whatever program you have configured with -t or in
 the config.h.
+.IP \(bu 2
+.B m
+start dmenu or whatever program you have in the config.h.
 .IP \(bu 2
 .B Tab
 go to next window in the current workspace window ring. If you release
@@ -177,8 +180,8 @@ mcmenu by using, for instance, 9menu, dmenu or ratmenu.
 .B wmwm\fP obeys the $DISPLAY variable.
 .SH STARTING
 Typically the window manager is started from a script, either run by
-.B startx(1) 
-or a login manager such as 
+.B startx(1)
+or a login manager such as
 .B xdm(1).
 .PP
 If you start from the console, you need an .xinitrc file. Here's a

@@ -1,12 +1,11 @@
 ###########################################################
 VERSION = 20160227
-DIST    = wmwm-$(VERSION)
 
-wmwmLIBS = "xcb xcb-ewmh xcb-randr xcb-keysyms xcb-icccm xcb-util xcb-shape"
-hiddenLIBS = "xcb xcb-ewmh xcb-icccm"
 ###########################################################
 CC = gcc
 LD = gcc
+
+PREFIX ?= /usr/
 
 WARNINGS = -Wall -Wextra -pedantic -Wno-variadic-macros
 CFLAGS = -std=c11 -O2 -pedantic $(WARNINGS) $(EXTRA_CFLAGS)
@@ -16,14 +15,22 @@ LDFLAGS = $(EXTRA_LDFLAGS)
 .SUFFIXES: .c .h .o
 .PHONY: all depend force clean install uninstall dist
 
+###########################################################
 #SRC=$(wildcard *.c)
-SRC=wmwm.c hidden.c list.c
-OBJ=$(SRC:%.c=%.o)
+SRC  = wmwm.c hidden.c list.c
+OBJ  = $(SRC:%.c=%.o)
+
+wmwmLIBS = "xcb xcb-ewmh xcb-randr xcb-keysyms xcb-icccm xcb-util xcb-shape"
+hiddenLIBS = "xcb xcb-ewmh xcb-icccm"
+
+DIST = wmwm-$(VERSION)
+DISTFILES = $(SRC) Makefile Makefile.dep LICENSE *.h *.man
+# XXX get h files from Makefile.dep ?
 ###########################################################
 
 BINS=wmwm hidden
 
-all: $(OBJ) $(BINS)
+all: $(OBJ) $(BINS) | Makefile.dep
 
 wmwm: wmwm.o list.o
 hidden: hidden.o
@@ -65,4 +72,4 @@ $(DIST).tar.xz:
 	rm -fR $(DIST)
 
 # if this file is corrupt and make would not run, delete it
-include Makefile.dep
+-include Makefile.dep

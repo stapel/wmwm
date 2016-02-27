@@ -1,8 +1,8 @@
-.TH mcwm 1 "Mar 09, 2012" "" ""
+.TH wmwm 1 "Mar 09, 2012" "" ""
 .SH NAME
-mcwm \- MC's Window Manager for X11.
+wmwm \- fork of MC's Window Manager for X11 mcwm.
 .SH SYNOPSIS
-.B mcwm
+.B wmwm
 [ 
 .B \-b 
 ] width
@@ -27,7 +27,7 @@ mcwm \- MC's Window Manager for X11.
 ]
 
 .SH DESCRIPTION
-.B mcwm\fP is a window manager for the X Window System.
+.B wmwm\fP is a window manager for the X Window System.
 
 .SH OPTIONS
 .PP
@@ -35,7 +35,7 @@ mcwm \- MC's Window Manager for X11.
 .PP
 \-i turns on icons/hidden windows. 
 .B Please note
-that there is no way from mcwm to get a hidden window back! You have
+that there is no way from wmwm to get a hidden window back! You have
 to use an external program such as a panel or the mcicon or 9icon
 scripts (see below) to get the window mapped again.
 .PP
@@ -54,14 +54,14 @@ are visible on all workspaces.
 windows that are visible on all workspaces.
 
 .SH USE
-Nota bene: For mcwm to be at all useful you need to know how what keys
+Nota bene: For wmwm to be at all useful you need to know how what keys
 generate the Mod1 and Mod4 modifier masks (default). If you don't
 know, use
 .B xmodmap(1)
 with the \-pm option to list them. If you don't want to use Mod1 and
 Mod4, you can change the modifiers in the file config.h and recompile.
 
-With the the default configuration, use mcwm like this.
+With the the default configuration, use wmwm like this.
 .PP
 Mod1 + mouse buttons:
 .RS
@@ -134,7 +134,7 @@ the config.h.
 .IP \(bu 2
 .B Tab
 go to next window in the current workspace window ring. If you release
-MODKEY or press another command key mcwm will change focus to the new
+MODKEY or press another command key wmwm will change focus to the new
 window. A new press of MODKEY + Tab will bring you back to the window
 where you last had focus.
 .IP \(bu 2
@@ -145,10 +145,10 @@ window, change to the workspace you want, then unfix the window on the
 new workspace.
 .IP \(bu 2
 .B i
-iconify (or hide) window from the display. Only usable when mcwm has
+iconify (or hide) window from the display. Only usable when wmwm has
 been started with -i. Currently there is no way to get a hidden window
 back. You have to use an external program such as a panel or the
-mcicon or 9icon script in the mcwm distribution.
+mcicon or 9icon script in the wmwm distribution.
 .IP \(bu 2
 .B 0\-9
 go to workspace n, 0-9.
@@ -174,7 +174,7 @@ you can also define mouse button actions on the root window. By
 default button 3 starts the command mcmenu. You can write your own
 mcmenu by using, for instance, 9menu, dmenu or ratmenu.
 .SH ENVIRONMENT
-.B mcwm\fP obeys the $DISPLAY variable.
+.B wmwm\fP obeys the $DISPLAY variable.
 .SH STARTING
 Typically the window manager is started from a script, either run by
 .B startx(1) 
@@ -198,7 +198,7 @@ xsetroot \-cursor_name plus \-fg white \-bg black
 xrdb \-load ~/.Xresources
 
 # Start window manager in the background. If it dies, X still lives.
-mcwm &
+wmwm &
 
 # Start a terminal in the foreground. If this dies, X dies.
 exec urxvt
@@ -206,18 +206,18 @@ exec urxvt
 .in -4
 .sp
 .SH SCRIPTS
-You may want to define a menu program for use with mcwm (see
+You may want to define a menu program for use with wmwm (see
 config.h). In the source distribution you can find an example as
 mcmenu (the default menu program in config.h) in the scripts
 directory.
 .PP
 Christian Neukirchen wrote a little script you can use to get
-iconified windows mapped again if you are running mcwm in allow icons
+iconified windows mapped again if you are running wmwm in allow icons
 mode (-i). You need awk, xdotool, xprop and xwininfo installed. You
 can find the script as scripts/9icon.
 .PP
 Inspired by Christian's work I wrote a small program, hidden(1), which
-is included with mcwm. You can use hidden(1) with the -c option
+is included with wmwm. You can use hidden(1) with the -c option
 together with 9menu. See scripts/mcicon for an example.
 .PP
 You might also be interested in the following shell function that

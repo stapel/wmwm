@@ -1,8 +1,9 @@
 *~
 *.o
-mcwm
+wmwm
 hidden
 DONT_UPDATE
 .clang_complete
 grep_log
 LOG*
+Makefile.dep

@@ -1,70 +1,68 @@
-VERSION=20160227
-DIST=wmwm-$(VERSION)
-SRC=wmwm.c list.c config.h list.h hidden.c
-DISTFILES=LICENSE Makefile wmwm.man hidden.man $(SRC)
+###########################################################
+VERSION = 20160227
+DIST    = wmwm-$(VERSION)
 
-#CC=clang
-#debug=0
-CC ?= gcc
+wmwmLIBS = "xcb xcb-ewmh xcb-randr xcb-keysyms xcb-icccm xcb-util xcb-shape"
+hiddenLIBS = "xcb xcb-ewmh xcb-icccm"
+###########################################################
+CC = gcc
+LD = gcc
 
-CFLAGS += -std=c11 -Wall -Wextra -pedantic -O2 -Wno-variadic-macros
+WARNINGS = -Wall -Wextra -pedantic -Wno-variadic-macros
+CFLAGS = -std=c11 -O2 -pedantic $(WARNINGS) $(EXTRA_CFLAGS)
+LDFLAGS = $(EXTRA_LDFLAGS)
 
-ifeq ($(debug),1)
-	CFLAGS += -g -DDEBUG -Wno-format-extra-args -O1 -fsanitize=address -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined
-endif
+###########################################################
+.SUFFIXES: .c .h .o
+.PHONY: all depend force clean install uninstall dist
 
+#SRC=$(wildcard *.c)
+SRC=wmwm.c hidden.c list.c
+OBJ=$(SRC:%.c=%.o)
+###########################################################
 
-LDFLAGS += -L/usr/local/lib -lxcb -lxcb-ewmh -lxcb-randr\
-		   -lxcb-keysyms -lxcb-icccm -lxcb-util -lxcb-shape
+BINS=wmwm hidden
 
-ifeq ($(coverage),1)
-	CFLAGS += -coverage
-	LDFLAGS += -coverage
-endif
+all: $(OBJ) $(BINS)
 
-RM = /bin/rm
-PREFIX ?= /usr/local
+wmwm: wmwm.o list.o
+hidden: hidden.o
 
-TARGETS=wmwm hidden
-OBJS=wmwm.o list.o
+$(BINS):
+	$(LD) $(LDFLAGS) $^ $(shell pkg-config $($@LIBS) --libs) -o $@
 
-all: $(TARGETS)
-
-wmwm: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
-
-wmwm-static: $(OBJS)
-	$(CC) -o $@ $(OBJS) -static $(CFLAGS) $(LDFLAGS) \
-	-lXau -lXdmcp
-
-wmwm.o: wmwm.c list.h config.h Makefile
-
-list.o: list.c list.h Makefile
-
-install: $(TARGETS)
-	install -D -m 755 wmwm $(DESTDIR)/$(PREFIX)/bin/wmwm
-	install -D -m 644 wmwm.man $(DESTDIR)/$(PREFIX)/man/man1/wmwm.1
-	install -D -m 755 hidden $(DESTDIR)/$(PREFIX)/bin/hidden
-	install -D -m 644 hidden.man $(DESTDIR)/$(PREFIX)/man/man1/hidden.1
-
-uninstall: deinstall
-deinstall:
-	$(RM) $(PREFIX)/bin/wmwm
-	$(RM) $(PREFIX)/man/man1/wmwm.1
-	$(RM) $(PREFIX)/bin/hidden
-	$(RM) $(PREFIX)/man/man1/hidden.1
-
-$(DIST).tar.bz2:
-	mkdir $(DIST)
-	cp -v $(DISTFILES) $(DIST)/
-	tar cvf $(DIST).tar --exclude .git $(DIST)
-	bzip2 -9 $(DIST).tar
-	$(RM) -rf $(DIST)
-
-dist: $(DIST).tar.bz2
+depend: $(SRC)
+	@rm -f Makefile.dep || true
+	@for file in $(SRC); do \
+	echo "get dependencies from $$file";\
+	$(CC) $(CFLAGS) -MM $$file >> Makefile.dep || exit 1;\
+	echo -e "\t\044(CC) \044(CFLAGS) $(INCLUDE) -o \044@ -c \044<\n" >> Makefile.dep; \
+	done
 
 clean:
-	$(RM) -f $(TARGETS) *.o *.gc* gmon.out *.plist
+	rm -f $(OBJ) $(BINS)
 
-distclean: clean
-	$(RM) -f $(DIST).tar.bz2
+install: $(TARGETS)
+	install -D -m 755 wmwm $(DESTDIR)$(PREFIX)/bin/wmwm
+	install -D -m 644 wmwm.man $(DESTDIR)$(PREFIX)/man/man1/wmwm.1
+	install -D -m 755 hidden $(DESTDIR)$(PREFIX)/bin/hidden
+	install -D -m 644 hidden.man $(DESTDIR)$(PREFIX)/man/man1/hidden.1
+
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/wmwm
+	rm -f $(DESTDIR)$(PREFIX)/man/man1/wmwm.1
+	rm -f $(DESTDIR)$(PREFIX)/bin/hidden
+	rm -f $(DESTDIR)$(PREFIX)/man/man1/hidden.1
+
+
+dist: $(DIST).tar.xz
+
+$(DIST).tar.xz:
+	mkdir $(DIST)
+	cp $(DISTFILES) $(DIST)/
+	tar cvf $(DIST).tar $(DIST)
+	xz -v $(DIST).tar
+	rm -fR $(DIST)
+
+# if this file is corrupt and make would not run, delete it
+include Makefile.dep

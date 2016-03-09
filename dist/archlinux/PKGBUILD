@@ -1,0 +1,42 @@
+# This is an example PKGBUILD file. Use this as a start to creating your own,
+# and remove these comments. For more information, see 'man PKGBUILD'.
+# NOTE: Please fill out the license field for your package! If it is unknown,
+# then please put 'unknown'.
+
+# Maintainer: Andreas Müller <andreas@stapelspeicher.org>
+pkgname=wmwm
+pkgver=20160227
+pkgrel=4
+epoch=
+pkgdesc="A minimalist window manager based on mcwm"
+arch=('i686' 'x86_64')
+url=""
+license=('custom:ISC')
+groups=()
+depends=('xcb-util-wm' 'xcb-util' 'xcb-util-keysyms')
+makedepends=()
+checkdepends=()
+optdepends=()
+provides=()
+conflicts=('mcwm' 'mcwm-git')
+replaces=()
+backup=()
+options=()
+install=
+changelog=
+source=("$pkgname-$pkgver.tar.xz")
+sha256sums=("d23a85899bae561cae7b5a63413283d0b137e01fd420baf28c7fcbc725145f13")
+noextract=()
+validpgpkeys=()
+
+build() {
+	cd "$pkgname-$pkgver"
+	EXTRA_CFLAGS="$CFLAGS $CPPFLAGS -fPIE"\
+		EXTRA_LDFLAGS="$LDFLAGS -pie"\
+	   	make
+}
+
+package() {
+	cd "$pkgname-$pkgver"
+	make BINDIR="/usr/bin" MANDIR="/usr/share/man" DESTDIR="$pkgdir/" install
+}

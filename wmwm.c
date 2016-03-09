@@ -1600,7 +1600,6 @@ bool setup_ewmh(void)
 		ewmh->_NET_CURRENT_DESKTOP,			// root
 		ewmh->_NET_ACTIVE_WINDOW,			// root
 		ewmh->_NET_CLIENT_LIST,				// root
-
 /*		ewmh->_NET_WORKAREA,				// root
 /		and _NET_WM_STRUT or _NET_WM_STRUT_PARTIAL */
 		ewmh->_NET_WM_NAME,					// window

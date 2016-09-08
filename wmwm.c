@@ -27,6 +27,7 @@
 
 /* XXX THINGS TODO XXX
  * -------------------
+ *!overflow/underflow in geometry.x += -= etc.
  * DIRTY state for when screen resolution changes for other workspaces?
    or make checks on position/size on each workspace switch?
  * ALT+TAB goes rewind after letting go and repeat

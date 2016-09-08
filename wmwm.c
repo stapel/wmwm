@@ -27,6 +27,11 @@
 
 /* XXX THINGS TODO XXX
  * -------------------
+ * DIRTY state for when screen resolution changes for other workspaces?
+   or make checks on position/size on each workspace switch?
+ * ALT+TAB goes rewind after letting go and repeat
+ * respect workarea (e.g. title bar)?
+ * mouse raise/lower does not allways work when I keep clicking
  * jdownloader2 seems to fuck up focus
  * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
  * (if wmwm starts? and) something is fullscreen, maybe use hints for
@@ -38,7 +43,7 @@
    (cut xcb_ewmh ext?)
 !* XXX user/program specified size
 !* clients when WM restarts?
-!* I had 20T VM usage?
+!* I had 20T VM usage? (probably Xorg-bug)
 !* it happened once that I could not toggle between all visible windows
  * inactive border color (allow to choose and/or dim inactive from active)
  * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
@@ -1524,13 +1529,6 @@ bool setup_keys(void)
 		}
 
 		switch (i) {
-			case KEY_NEXT:
-				xcb_grab_key(conn, 1, screen->root,
-						NEXT_MODKEY,
-						keys[i].keycode,
-						XCB_GRAB_MODE_ASYNC,
-						XCB_GRAB_MODE_ASYNC);
-				break;
 			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
 				/* grab hjkl with extended modmask for resizing */
 				xcb_grab_key(conn, 1, screen->root,
@@ -3361,12 +3359,6 @@ void handle_key_press(xcb_generic_event_t *ev)
 	}
 
 	switch (e->state) {
-		/* META */
-		case NEXT_MODKEY:
-			if (key == KEY_NEXT)	/* tab */
-				focus_next();
-			break;
-
 		/* CTRL + META + SHIFT */
 		case EXTRA_MODKEY:
 			switch (key) {
@@ -3394,6 +3386,10 @@ void handle_key_press(xcb_generic_event_t *ev)
 		/* CTRL + META */
 		case MODKEY:
 			switch (key) {
+				case KEY_NEXT:			/* tab */
+					focus_next();
+					break;
+
 				case KEY_TERMINAL:		/* return */
 					start(conf.terminal);
 					break;

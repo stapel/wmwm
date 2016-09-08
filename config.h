@@ -12,19 +12,16 @@
  * is usually the Windows key on more normal keyboard layouts.
  */
 /* XXX: These three all have to be different for now */
-#define MODKEY (XCB_MOD_MASK_1 | XCB_MOD_MASK_CONTROL)
+#define MODKEY XCB_MOD_MASK_4
 
 /* Extra modifier for resizing. Default is Shift. */
 #define EXTRA_MODKEY (MODKEY | XCB_MOD_MASK_SHIFT)
-
-/* ALT for ALT+TAB next window */
-#define NEXT_MODKEY XCB_MOD_MASK_1
 
 /*
  * Modifier key to use with mouse buttons. Default Mod1, Meta on my
  * keyboard.
  */
-#define MOUSE_MODKEY XCB_MOD_MASK_1
+#define MOUSE_MODKEY XCB_MOD_MASK_4
 
 /*
  * Start this program when pressing MODKEY + USERKEY_TERMINAL. Needs
@@ -41,7 +38,7 @@
  * to be in $PATH.
  */
 
-#define MENU "/home/argon/bin/dmenu"
+#define MENU "dmenu_run"
 
 /*
  * Do we allow windows to be iconified? Set to true if you want this
@@ -86,7 +83,7 @@
 #define USERKEY_MAXVERT		XK_V
 #define USERKEY_RAISE		XK_R
 #define USERKEY_TERMINAL	XK_Return
-#define USERKEY_MENU	 	XK_M
+#define USERKEY_MENU	 	XK_D
 #define USERKEY_MAX			XK_X
 #define USERKEY_CHANGE		XK_Tab
 #define USERKEY_WS10		XK_0

@@ -4,35 +4,33 @@
 
 #ifdef DEBUG
 #define PDEBUG(Args...) \
-  do { fprintf(stderr, "mcwm: "); fprintf(stderr, ##Args); } while(0)
+  do { fprintf(stderr, "list: "); fprintf(stderr, ##Args); } while(0)
 #define D(x) x
 #else
 #define PDEBUG(Args...)
 #define D(x)
 #endif
 
+#define destroy(x) do { free(x); x = NULL; } while (0)
+
 /*
  * Move element in item to the head of list mainlist.
  */
-void movetohead(item_t **mainlist, item_t *item)
+void list_to_head(list_t **mainlist, list_t *item)
 {
-	if (NULL == item || NULL == mainlist || NULL == *mainlist) {
+	if (NULL == item || NULL == mainlist || NULL == *mainlist)
 		return;
-	}
 
-	if (*mainlist == item) {
-		/* item is NULL or we're already at head. Do nothing. */
+	/* if item is NULL or we're already at head. Do nothing. */
+	if (*mainlist == item)
 		return;
-	}
 
 	/* Braid together the list where we are now. */
-	if (item->prev) {
+	if (item->prev)
 		item->prev->next = item->next;
-	}
 
-	if (item->next) {
+	if (item->next)
 		item->next->prev = item->prev;
-	}
 
 	/* Now we'at head, so no one before us. */
 	item->prev = NULL;
@@ -52,13 +50,12 @@ void movetohead(item_t **mainlist, item_t *item)
  *
  * Returns item or NULL if out of memory.
  */
-item_t *additem(item_t **mainlist)
+list_t *list_add(list_t **mainlist)
 {
-	item_t *item;
+	list_t *item;
 
-	if (NULL == (item = (item_t *) calloc(1, sizeof(item_t)))) {
+	if (NULL == (item = (list_t *) calloc(1, sizeof(list_t))))
 		return NULL;
-	}
 
 	if (NULL == *mainlist) {
 		/* First in the list. */
@@ -76,12 +73,12 @@ item_t *additem(item_t **mainlist)
 	return item;
 }
 
-void delitem(item_t **mainlist, item_t *item)
+void list_remove(list_t **mainlist, list_t *item)
 {
-	if (NULL == mainlist || NULL == *mainlist || NULL == item) {
+	if (NULL == mainlist || NULL == *mainlist || NULL == item)
 		return;
-	}
-	item_t *ml = *mainlist;
+
+	list_t *ml = *mainlist;
 
 	if (item == *mainlist) {
 		/* First entry was removed. Remember the next one instead. */
@@ -98,61 +95,52 @@ void delitem(item_t **mainlist, item_t *item)
 	free(item);
 }
 
-void freeitem(item_t **list, int *stored, item_t *item)
+void list_erase(list_t **list, int *stored, list_t *item)
 {
-	if (NULL == list || NULL == *list || NULL == item) {
+	if (NULL == list || NULL == *list || NULL == item)
 		return;
-	}
 
-	if (item->data) {
-		free(item->data);
-		item->data = NULL;
-	}
+	if (item->data)
+		destroy(item->data);
 
-	delitem(list, item);
+	list_remove(list, item);
 
-	if (stored) {
+	if (stored)
 		(*stored)--;
-	}
 }
 
 /*
  * Delete all elements in list and free memory resources.
  */
-void delallitems(item_t **list, int *stored)
+void list_erase_all(list_t **list, int *stored)
 {
-	item_t *item;
-	item_t *next;
+	list_t *next;
 
-	for (item = *list; item; item = next) {
+	for (list_t *item = *list; item; item = next) {
 		next = item->next;
-		if (item->data) {
-			free(item->data);
-			item->data = NULL;
-		}
-		delitem(list, item);
+		if (item->data)
+			destroy(item->data);
+		list_remove(list, item);
 	}
 
-	if (stored) {
+	if (stored)
 		(*stored) = 0;
-	}
 }
 
-void listitems(item_t *mainlist)
+void list_print(list_t *mainlist)
 {
-	item_t *item;
 	int i;
+	list_t *item;
 
-	for (item = mainlist, i = 1; item; item = item->next, i++) {
+	for (item = mainlist, i = 1; item; item = item->next, i++)
 		printf("item #%d (stored at %p).\n", i, (void *) item);
-	}
 }
 
 #if 0
 
-void listall(item_t *mainlist)
+void listall(list_t *mainlist)
 {
-	item_t *item;
+	list_t *item;
 	int i;
 
 	printf("Listing all:\n");
@@ -166,20 +154,20 @@ void listall(item_t *mainlist)
 
 int main(void)
 {
-	item_t *mainlist = NULL;
-	item_t *item1;
-	item_t *item2;
-	item_t *item3;
-	item_t *item4;
-	item_t *item;
-	item_t *nextitem;
+	list_t *mainlist = NULL;
+	list_t *item1;
+	list_t *item2;
+	list_t *item3;
+	list_t *item4;
+	list_t *item;
+	list_t *nextitem;
 	int i;
 	char *foo1 = "1";
 	char *foo2 = "2";
 	char *foo3 = "3";
 	char *foo4 = "4";
 
-	item1 = additem(&mainlist);
+	item1 = list_add(&mainlist);
 	if (NULL == item1) {
 		printf("Couldn't allocate.\n");
 		exit(1);
@@ -188,7 +176,7 @@ int main(void)
 	printf("Current elements:\n");
 	listall(mainlist);
 
-	item2 = additem(&mainlist);
+	item2 = list_add(&mainlist);
 	if (NULL == item2) {
 		printf("Couldn't allocate.\n");
 		exit(1);
@@ -197,7 +185,7 @@ int main(void)
 	printf("Current elements:\n");
 	listall(mainlist);
 
-	item3 = additem(&mainlist);
+	item3 = list_add(&mainlist);
 	if (NULL == item3) {
 		printf("Couldn't allocate.\n");
 		exit(1);
@@ -206,7 +194,7 @@ int main(void)
 	printf("Current elements:\n");
 	listall(mainlist);
 
-	item4 = additem(&mainlist);
+	item4 = list_add(&mainlist);
 	if (NULL == item4) {
 		printf("Couldn't allocate.\n");
 		exit(1);
@@ -261,7 +249,7 @@ int main(void)
 		("----------------------------------------------------------------------\n");
 
 #if 0
-	movetohead(&mainlist, item2);
+	list_to_head(&mainlist, item2);
 	printf("Current elements:\n");
 	listall(mainlist);
 
@@ -270,19 +258,19 @@ int main(void)
 #endif
 
 	printf("Deleting item stored at %p\n", item3);
-	delitem(&mainlist, item3);
+	list_remove(&mainlist, item3);
 	printf("Current elements:\n");
 	listall(mainlist);
 
 	puts("");
 
-	delitem(&mainlist, item2);
+	list_remove(&mainlist, item2);
 	printf("Current elements:\n");
 	listall(mainlist);
 
 	puts("");
 
-	delitem(&mainlist, item1);
+	list_remove(&mainlist, item1);
 	printf("Current elements:\n");
 	listall(mainlist);
 

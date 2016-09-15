@@ -115,7 +115,7 @@
 #include <xcb/xproto.h>       // for xcb_rectangle_t, xcb_screen_t, xcb_atom_t
 
 /* list functions */
-#include "list.h"             // for item_t, additem, movetohead, freeitem
+#include "list.h"             // for list_t, list_add, list_to_head, list_erase...
 
 
 /* Check here for user configurable parts: */
@@ -252,7 +252,7 @@ typedef struct monitor {
 	uint16_t width;				/* Width in pixels. */
 	uint16_t height;			/* Height in pixels. */
 
-	item_t *item;				/* Pointer to our place in output list. */
+	list_t *item;				/* Pointer to our place in output list. */
 } monitor_t;
 
 /* Everything we know about a window. */
@@ -283,8 +283,8 @@ typedef struct client {
 	bool ignore_unmap;				/* unmap_notification we shall ignore */
 
 	monitor_t *monitor;				/* The physical output this window is on. */
-	item_t *winitem;				/* Pointer to our place in global windows list. */
-	item_t *wsitem[WORKSPACES];		/* Pointer to our place in every
+	list_t *winitem;				/* Pointer to our place in global windows list. */
+	list_t *wsitem[WORKSPACES];		/* Pointer to our place in every
 									 * workspace window list. */
 } client_t;
 
@@ -328,8 +328,8 @@ client_t *lastfocuswin = NULL;	/* Last focused window. NOTE! Only
 								 * start and end of tabbing
 								 * mode. */
 
-item_t *winlist = NULL;			/* Global list of all client windows. */
-item_t *monlist = NULL;			/* List of all physical monitor outputs. */
+list_t *winlist = NULL;			/* Global list of all client windows. */
+list_t *monlist = NULL;			/* List of all physical monitor outputs. */
 
 wm_mode_t MCWM_mode = mode_nothing;		/* Internal mode, such as move or resize */
 
@@ -337,7 +337,7 @@ wm_mode_t MCWM_mode = mode_nothing;		/* Internal mode, such as move or resize */
  * Workspace list: Every workspace has a list of all visible
  * windows.
  */
-item_t *wslist[WORKSPACES] = {
+list_t *wslist[WORKSPACES] = {
 	NULL,
 	NULL,
 	NULL,
@@ -635,7 +635,7 @@ void finish_tab(void)
 	set_mode(mode_nothing);
 
 	if (lastfocuswin && focuswin) {
-		movetohead(&wslist[curws], lastfocuswin->wsitem[curws]);
+		list_to_head(&wslist[curws], lastfocuswin->wsitem[curws]);
 		lastfocuswin = NULL;
 	}
 }
@@ -741,7 +741,7 @@ void arrangewindows(void)
 	 * Go through all windows. If they don't fit on the new screen,
 	 * move them around and resize them as necessary.
 	 */
-	for (item_t *item = winlist; item; item = item->next) {
+	for (list_t *item = winlist; item; item = item->next) {
 		client_t *client = item->data;
 		update_geometry(client, NULL);
 	}
@@ -755,7 +755,7 @@ void arrangewindows(void)
  */
 void ewmh_update_client_list()
 {
-	item_t *item;
+	list_t *item;
 	xcb_window_t *window_list;
 
 	uint32_t windows = 0;
@@ -835,7 +835,7 @@ uint32_t ewmh_get_workspace(xcb_drawable_t win)
  */
 void set_workspace(client_t *client, uint32_t ws)
 {
-	item_t *item;
+	list_t *item;
 
 	PDEBUG("set workspace for 0x%x to %u\n", client->id, ws);
 
@@ -843,7 +843,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		/* add to all workspaces not currently on */
 		for (uint32_t i = 0; i < WORKSPACES; i++) {
 			if (! client->wsitem[i]) {
-				if ((item = additem(&wslist[i])) == NULL) {
+				if ((item = list_add(&wslist[i])) == NULL) {
 					perror("wmwm");
 					return;
 				}
@@ -855,7 +855,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		/* remove from all workspaces but ws */
 		for (uint32_t i = 0; i < WORKSPACES; i++) {
 			if (i != ws && client->wsitem[i]) {
-				delitem(&wslist[i], client->wsitem[i]);
+				list_remove(&wslist[i], client->wsitem[i]);
 				client->wsitem[i] = NULL;
 			}
 		}
@@ -863,7 +863,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		/* add if not hidden or already */
 		if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
 			/* add to destined workspace */
-			if ((item = additem(&wslist[ws])) == NULL) {
+			if ((item = list_add(&wslist[ws])) == NULL) {
 				perror("wmwm");
 				return;
 			}
@@ -886,7 +886,7 @@ void set_workspace(client_t *client, uint32_t ws)
 /* Change current workspace to ws. */
 void change_workspace(uint32_t ws)
 {
-	item_t *item;
+	list_t *item;
 	client_t *client;
 
 	if (ws == curws) {
@@ -1365,7 +1365,7 @@ void icccm_update_wm_protocols(client_t* client)
  * */
 client_t *create_client(xcb_window_t win)
 {
-	item_t *item;
+	list_t *item;
 	client_t *client;
 	uint32_t ws;
 
@@ -1373,7 +1373,7 @@ client_t *create_client(xcb_window_t win)
 	xcb_change_save_set(conn, XCB_SET_MODE_INSERT, win);
 
 	/* Remember window and store a few things about it. */
-	item = additem(&winlist);
+	item = list_add(&winlist);
 
 	if (! item) {
 		PERROR("create_client: Out of memory.\n");
@@ -1969,7 +1969,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 			 * Check if it was used before. If it was, do something.
 			 */
 			if ((mon = find_monitor(outputs[i]))) {
-				item_t *item;
+				list_t *item;
 				client_t *client;
 
 				/* Check all windows on this monitor and move them to
@@ -2016,7 +2016,7 @@ void arrbymon(monitor_t *monitor)
 	 * Go through all windows on this monitor. If they don't fit on
 	 * the new screen, move them around and resize them as necessary.
 	 */
-	for (item_t *item = winlist; item; item = item->next) {
+	for (list_t *item = winlist; item; item = item->next) {
 		client = item->data;
 		if (client->monitor == monitor) {
 			update_geometry(client, NULL);
@@ -2028,7 +2028,7 @@ monitor_t *find_monitor(xcb_randr_output_t id)
 {
 	monitor_t *mon;
 
-	for (item_t *item = monlist; item; item = item->next) {
+	for (list_t *item = monlist; item; item = item->next) {
 		mon = item->data;
 		if (id == mon->id) {
 			PDEBUG("find_monitor: Found it. Output ID: %d\n", mon->id);
@@ -2043,7 +2043,7 @@ monitor_t *find_clones(xcb_randr_output_t id, int16_t x, int16_t y)
 {
 	monitor_t *clonemon;
 
-	for (item_t *item = monlist; item; item = item->next) {
+	for (list_t *item = monlist; item; item = item->next) {
 		clonemon = item->data;
 
 		PDEBUG("Monitor %s: x, y: %d--%d, %d--%d.\n",
@@ -2064,7 +2064,7 @@ monitor_t *find_monitor_at(int16_t x, int16_t y)
 {
 	monitor_t* mon;
 
-	for (item_t* item = monlist; item; item = item->next) {
+	for (list_t* item = monlist; item; item = item->next) {
 		mon = item->data;
 		PDEBUG("Monitor %s: x, y: %d--%d, %d--%d.\n",
 				mon->name,
@@ -2087,16 +2087,16 @@ void del_monitor(monitor_t *mon)
 {
 	PDEBUG("Deleting output %s.\n", mon->name);
 	destroy(mon->name);
-	freeitem(&monlist, NULL, mon->item);
+	list_erase(&monlist, NULL, mon->item);
 }
 
 monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 		uint32_t x, uint32_t y, uint16_t width, uint16_t height)
 {
-	item_t *item;
+	list_t *item;
 	monitor_t *mon;
 
-	if (! (item = additem(&monlist))) {
+	if (! (item = list_add(&monlist))) {
 		perror("wmwm add_monitor");
 		return NULL;
 	}
@@ -2241,7 +2241,7 @@ client_t *find_clientp(xcb_drawable_t win)
 	if (focuswin && (focuswin->id == win || focuswin->frame == win))
 		return focuswin;
 
-	for (item_t *item = winlist; item; item = item->next) {
+	for (list_t *item = winlist; item; item = item->next) {
 		client_t *client = item->data;
 		if (win == client->id) {
 			return client;
@@ -2268,7 +2268,7 @@ client_t *find_client(xcb_drawable_t win)
 	if (focuswin && focuswin->id == win)
 		return focuswin;
 
-	for (item_t *item = winlist; item; item = item->next) {
+	for (list_t *item = winlist; item; item = item->next) {
 		client_t *client = item->data;
 		if (win == client->id)
 			return client;
@@ -2737,7 +2737,7 @@ void remove_client(client_t *client)
 		destroy(error);
 
 	/* Remove from global window list. */
-	freeitem(&winlist, NULL, client->winitem);
+	list_erase(&winlist, NULL, client->winitem);
 	ewmh_update_client_list();
 }
 
@@ -2922,7 +2922,7 @@ void delete_win(client_t* client)
 /* Move focus window to previous screen */
 void prev_screen(void)
 {
-	item_t *item;
+	list_t *item;
 
 	if (! focuswin || ! focuswin->monitor)
 		return;
@@ -2944,7 +2944,7 @@ void prev_screen(void)
 /* Move focus window to next screen */
 void next_screen(void)
 {
-	item_t *item;
+	list_t *item;
 
 	if (! focuswin || ! focuswin->monitor)
 		return;
@@ -3590,12 +3590,12 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 		 * of the list.
 		 */
 		if (focuswin) {
-			movetohead(&wslist[curws],
+			list_to_head(&wslist[curws],
 					focuswin->wsitem[curws]);
 			lastfocuswin = NULL;
 		}
 
-		movetohead(&wslist[curws],
+		list_to_head(&wslist[curws],
 				client->wsitem[curws]);
 	} /* if not tabbing */
 

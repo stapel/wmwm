@@ -1,3 +1,6 @@
+#ifndef __WMWM_LIST_H__
+#define __WMWM_LIST_H__
+
 typedef struct list_item list_t;
 
 struct list_item {
@@ -40,3 +43,4 @@ void list_erase_all(list_t **list, int *stored);
  */
 void list_print(list_t *mainlist);
 
+#endif /* __WMWM_LIST_H__ */

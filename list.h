@@ -1,5 +1,5 @@
-#ifndef __WMWM_LIST_H__
-#define __WMWM_LIST_H__
+#ifndef __WMWM__LIST_H__
+#define __WMWM__LIST_H__
 
 typedef struct list_item list_t;
 
@@ -43,4 +43,4 @@ void list_erase_all(list_t **list, int *stored);
  */
 void list_print(list_t *mainlist);
 
-#endif /* __WMWM_LIST_H__ */
+#endif /* __WMWM__LIST_H__ */

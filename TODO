@@ -1,6 +1,7 @@
-/* XXX THINGS TODO XXX
- * -------------------
- *!overflow/underflow in geometry.x += -= etc.
+TODO
+-------------------
+
+ * !overflow/underflow in geometry.x += -= etc.
  * DIRTY state for when screen resolution changes for other workspaces?
    or make checks on position/size on each workspace switch?
  * ALT+TAB goes rewind after letting go and repeat
@@ -15,16 +16,16 @@
  * size hints position and size are obsolete
  * better handling of atoms (ewmh,icccm) and their usage
    (cut xcb_ewmh ext?)
-!* XXX user/program specified size
-!* clients when WM restarts?
-!* I had 20T VM usage? (probably Xorg-bug)
-!* it happened once that I could not toggle between all visible windows
+ * !XXX user/program specified size
+ * !clients when WM restarts?
+ * !I had 20T VM usage? (probably Xorg-bug)
+ * !it happened once that I could not toggle between all visible windows
  * inactive border color (allow to choose and/or dim inactive from active)
  * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
-!* CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
-!* set CLASS and PID for Window Manager
+ * !CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
+ * !set CLASS and PID for Window Manager
  * maybe change TAB change order (orig was different)
-!* race condition on workspace-switch? (mapping/focus)
+ * !race condition on workspace-switch? (mapping/focus)
    -> ? (maybe not race, sometimes mpv doesn't get focus when spawned
          via firefox)
    -> Yes, change that hidden_events stuff! TODO
@@ -37,17 +38,17 @@
  	what about them going off-screen?
  * gprof/gcov?
  * focuswin/lastfocuswin (remove that last- somehow)
-!* only update geometry after workspace change (or on current) after
+ * !only update geometry after workspace change (or on current) after
    monitor-updates
  * setup keys for single keys (mapping_notify)
-!* set_focus/set_focus_win
-!* stacking
-!* _NET_MOVERESIZE_WINDOW
+ * !set_focus/set_focus_win
+ * !stacking
+ * !_NET_MOVERESIZE_WINDOW
  * handle_client_message more
  * MWM hints
  * aspect normal_hints
-!* Error handling
-?* LVDS is seen as clone of VGA-0? look at special-log
+ * !Error handling
+ * ?LVDS is seen as clone of VGA-0? look at special-log
  * NET_WM_STATE client message
  * configurewin (don't like that somehow)
  * key handling, automate a little further, it looks really ugly
@@ -62,4 +63,3 @@
  * for client messages I might check for source type:
 	if (e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER
 		|| e->data.data32[1] == XCB_EWMH_CLIENT_SOURCE_TYPE_NONE)
- */

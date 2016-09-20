@@ -107,10 +107,6 @@ typedef enum {
 
 /* This means we didn't get any window hint at all. */
 #define WORKSPACE_NONE  0xfffffffe
-#define WORKSPACE_FIXED 0xffffffff
-
-/* Value in WM hint which means this window is fixed on all workspaces. */
-#define NET_WM_FIXED WORKSPACE_FIXED
 
 /* Default Client Events
  *
@@ -194,7 +190,6 @@ struct keys {
 	xcb_keysym_t keysym;
 	xcb_keycode_t keycode;
 } keys[KEY_MAX] = {
-	{ USERKEY_FIX, 0},
 	{ USERKEY_MOVE_LEFT, 0},
 	{ USERKEY_MOVE_DOWN, 0},
 	{ USERKEY_MOVE_UP, 0},
@@ -237,8 +232,6 @@ struct conf {
 	char *menu;					/* Path to menu to start. */
 	uint32_t focuscol;			/* Focused border color. */
 	uint32_t unfocuscol;		/* Unfocused border color.  */
-	uint32_t fixedcol;			/* Fixed windows border color. */
-	uint32_t fixedufcol;		/* Unfocused fixed windows border color. */
 	bool allowicons;			/* Allow windows to be unmapped. */
 } conf;
 
@@ -440,8 +433,6 @@ void ewmh_update_state(client_t* client)
 		atoms[i++] = ewmh->_NET_WM_STATE_FULLSCREEN;
 	if (client->vertmaxed)
 		atoms[i++] = ewmh->_NET_WM_STATE_MAXIMIZED_VERT;
-	if (client->fixed)
-		atoms[i++] = ewmh->_NET_WM_STATE_STICKY;
 	if (client->hidden)
 		atoms[i++] = ewmh->_NET_WM_STATE_HIDDEN;
 	if (client == focuswin)
@@ -654,8 +645,7 @@ bool ewmh_is_fullscreen(client_t* client)
  * Get EWWM hint so we might know what workspace window win should be
  * visible on.
  *
- * Returns either workspace, NET_WM_FIXED if this window should be
- * visible on all workspaces or WORKSPACE_NONE if we didn't find any hints.
+ * Returns either workspace, WORKSPACE_NONE if we didn't find any hints.
  */
 uint32_t ewmh_get_workspace(xcb_drawable_t win)
 {
@@ -678,47 +668,29 @@ void set_workspace(client_t *client, uint32_t ws)
 
 	PDEBUG("set workspace for 0x%x to %u\n", client->id, ws);
 
-	if (ws == WORKSPACE_FIXED) {
-		/* add to all workspaces not currently on */
-		for (uint32_t i = 0; i < WORKSPACES; i++) {
-			if (! client->wsitem[i]) {
-				if ((item = list_add(&wslist[i])) == NULL) {
-					perror("wmwm");
-					return;
-				}
-				client->wsitem[i] = item;
-				item->data = client;
-			}
+	/* remove from all workspaces but ws */
+	for (uint32_t i = 0; i < WORKSPACES; i++) {
+		if (i != ws && client->wsitem[i]) {
+			list_remove(&wslist[i], client->wsitem[i]);
+			client->wsitem[i] = NULL;
 		}
-	} else {
-		/* remove from all workspaces but ws */
-		for (uint32_t i = 0; i < WORKSPACES; i++) {
-			if (i != ws && client->wsitem[i]) {
-				list_remove(&wslist[i], client->wsitem[i]);
-				client->wsitem[i] = NULL;
-			}
-		}
+	}
 
-		/* add if not hidden or already */
-		if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
-			/* add to destined workspace */
-			if ((item = list_add(&wslist[ws])) == NULL) {
-				perror("wmwm");
-				return;
-			}
-			client->wsitem[ws] = item;
-			item->data = client;
+	/* add if not hidden or already */
+	if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
+		/* add to destined workspace */
+		if ((item = list_add(&wslist[ws])) == NULL) {
+			perror("wmwm");
+			return;
 		}
+		client->wsitem[ws] = item;
+		item->data = client;
 	}
 
 	/* Set _NET_WM_DESKTOP accordingly or leave it  */
 	if (ws != WORKSPACE_NONE) {
 		xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
 	}
-/*	else {
-		xcb_delete_property(conn, client->id, ewmh->_NET_WM_DESKTOP);
-	}
-*/
 }
 
 
@@ -738,28 +710,24 @@ void change_workspace(uint32_t ws)
 	 * We lose our focus if the window we focus isn't fixed. An
 	 * EnterNotify event will set focus later.
 	 */
-	if (focuswin && !focuswin->fixed)
+	if (focuswin)
 		unset_focus();
 
 	/* Apply hidden window event mask, this ensures no invalid enter events */
 	for (item = wslist[curws]; item; item = item->next) {
 		client = item->data;
-		if (! client->fixed) {
-			set_hidden_events(client);
-		}
+		set_hidden_events(client);
 	}
 
 	/* Go through list of current ws. Unmap everything that isn't fixed. */
 	for (item = wslist[curws]; item; item = item->next) {
 		client = item->data;
-		if (! client->fixed) {
-			/*
-			 * This is an ordinary window. Just unmap it. Note that
-			 * this will generate an unnecessary UnmapNotify event
-			 * which we will try to handle later.
-			 */
-			hide(client);
-		}
+		/*
+		 * This is an ordinary window. Just unmap it. Note that
+		 * this will generate an unnecessary UnmapNotify event
+		 * which we will try to handle later.
+		 */
+		hide(client);
 	}
 
 	/* Set the new current workspace */
@@ -769,20 +737,13 @@ void change_workspace(uint32_t ws)
 	/* Go through list of new ws. Map everything that isn't fixed. */
 	for (item = wslist[curws]; item; item = item->next) {
 		client = item->data;
-
-		/* Fixed windows are already mapped. Map everything else. */
-		if (! client->fixed) {
-//			update_geometry(client, NULL);
-			show(client);
-		}
+		show(client);
 	}
 
 	/* Re-enable enter events */
 	for (item = wslist[ws]; item; item = item->next) {
 		client = item->data;
-		if (! client->fixed) {
-			set_default_events(client);
-		}
+		set_default_events(client);
 	}
 
 	/* Map the windows now */
@@ -790,36 +751,6 @@ void change_workspace(uint32_t ws)
 
 	/* Set focus on the window under the mouse */
 	set_input_focus(XCB_WINDOW_NONE);
-}
-
-/*
- * Fix or unfix a window client from all workspaces. If set_color is
- * set, also change back to ordinary focus color when unfixing.
- */
-void fix_client(client_t *client)
-{
-	if (! client)
-		return;
-
-	client->fixed = ! client->fixed;
-
-	if (client->fixed) {
-		/*
-		 * First raise the window. If we're going to another desktop
-		 * we don't want this fixed window to be occluded behind
-		 * something else.
-		 */
-		raise_client(client);
-		set_workspace(client, WORKSPACE_FIXED);
-	} else {
-		set_workspace(client, curws);
-	}
-
-	/* set border color */
-	update_bordercolor(client);
-
-	/* update _NET_WM_STATE */
-	ewmh_update_state(client);
 }
 
 /*
@@ -1235,7 +1166,6 @@ client_t *create_client(xcb_window_t win)
 	client->usercoord = false;
 	client->vertmaxed = false;
 	client->fullscreen = false;
-	client->fixed = false;
 	client->take_focus = false;
 	client->use_delete = false;
 	client->hidden = false;
@@ -1353,7 +1283,7 @@ bool setup_keys(void)
 //	}
 
 	/* Now grab the rest of the keys with the MODKEY modifier. */
-	for (i = KEY_FIX; i < KEY_MAX; i++) {
+	for (i = KEY_LEFT; i < KEY_MAX; i++) {
 		if (XK_VoidSymbol == keys[i].keysym) {
 			keys[i].keycode = 0;
 			continue;
@@ -1444,7 +1374,6 @@ bool setup_ewmh(void)
 		ewmh->_NET_WM_DESKTOP,				// window
 
 		ewmh->_NET_WM_STATE,				// window
-		ewmh->_NET_WM_STATE_STICKY,			// option
 		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// option
 		ewmh->_NET_WM_STATE_FULLSCREEN,		// option
 		ewmh->_NET_WM_STATE_HIDDEN,			// option
@@ -1556,10 +1485,7 @@ bool setup_screen(void)
 			 */
 			uint32_t ws = ewmh_get_workspace(children[i]);
 
-			if (ws == NET_WM_FIXED) {
-				fix_client(client);
-				show(client);
-			} else if (ws < WORKSPACES) {
+			if (ws < WORKSPACES) {
 				set_workspace(client, ws);
 				/* If it's on our current workspace, show it, else hide it. */
 				if (ws == curws)
@@ -2370,17 +2296,11 @@ void update_bordercolor(client_t *client)
 	uint32_t color[1];
 	if (! client)
 		return;
-	if (client == focuswin) {
-		if (client->fixed)
-			color[0] = conf.fixedcol;
-		else
-			color[0] = conf.focuscol;
-	} else {
-		if (client->fixed)
-			color[0] = conf.fixedufcol;
-		else
-			color[0] = conf.unfocuscol;
-	}
+	if (client == focuswin)
+		color[0] = conf.focuscol;
+	else
+		color[0] = conf.unfocuscol;
+
 	xcb_change_window_attributes(conn, client->frame,
 		XCB_CW_BORDER_PIXEL, color);
 }
@@ -2591,11 +2511,7 @@ void attach_frame(client_t *client)
 	/* mask and values for frame window */
 	uint32_t	mask = XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
 
-	uint32_t	values[3] = {
-		client->fixed ? conf.fixedufcol : conf.unfocuscol,
-		1,
-		HIDDEN_FRAME_EVENTS
-	};
+	uint32_t	values[3] = { conf.unfocuscol, 1, HIDDEN_FRAME_EVENTS };
 
 	const xcb_rectangle_t *geo = &(client->geometry);
 
@@ -3165,7 +3081,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 
 key_enum_t key_from_keycode(xcb_keycode_t keycode)
 {
-	for (key_enum_t i = KEY_FIX; i < KEY_MAX; i++) {
+	for (key_enum_t i = KEY_LEFT; i < KEY_MAX; i++) {
 		if (keys[i].keycode && keycode == keys[i].keycode)
 			return i;
 	}
@@ -3236,10 +3152,6 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 				case KEY_MENU:		/* m */
 					start(conf.menu);
-					break;
-
-				case KEY_FIX:		/* f */
-					fix_client(focuswin);
 					break;
 
 				case KEY_LEFT:		/* left */
@@ -3777,8 +3689,6 @@ void print_help(void)
 	printf("  -m menu\tstart menu with MODKEY + m\n");
 	printf("  -f color\tfocused window border color\n");
 	printf("  -F color\tunfocused window border color\n");
-	printf("  -x color\tfixed focused window border color\n");
-	printf("  -X color\tfixed unfocused window border color\n");
 	printf("\n");
 	printf("color may be either a named color or in #000000 notation\n");
 	printf("\n");
@@ -3870,8 +3780,6 @@ int main(int argc, char **argv)
 	xcb_drawable_t root;
 	char *focuscol;
 	char *unfocuscol;
-	char *fixedcol;
-	char *fixedufcol;
 	xcb_screen_iterator_t iter;
 
 	set_timestamp(XCB_CURRENT_TIME);
@@ -3904,8 +3812,6 @@ int main(int argc, char **argv)
 	conf.allowicons = ALLOWICONS;
 	focuscol = FOCUSCOL;
 	unfocuscol = UNFOCUSCOL;
-	fixedcol = FIXEDCOL;
-	fixedufcol = FIXEDUFCOL;
 
 	while ((ch = getopt(argc, argv, "b:it:m:f:F:x:X:")) != -1) {
 		switch (ch) {
@@ -3926,12 +3832,6 @@ int main(int argc, char **argv)
 				break;
 			case 'F':
 				unfocuscol = optarg;
-				break;
-			case 'x':
-				fixedcol = optarg;
-				break;
-			case 'X':
-				fixedufcol = optarg;
 				break;
 			default:
 				print_help();
@@ -3970,8 +3870,6 @@ int main(int argc, char **argv)
 	/* Get some colors. */
 	conf.focuscol = getcolor(focuscol);
 	conf.unfocuscol = getcolor(unfocuscol);
-	conf.fixedcol = getcolor(fixedcol);
-	conf.fixedufcol = getcolor(fixedufcol);
 
 	/* setup EWMH */
 	if (! setup_ewmh()) {

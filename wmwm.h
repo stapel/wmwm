@@ -14,7 +14,6 @@
 /* Types. */
 /* All our key shortcuts. */
 typedef enum {
-	KEY_FIX,
 	KEY_LEFT,
 	KEY_DOWN,
 	KEY_UP,
@@ -80,7 +79,6 @@ typedef struct client {
 
 	bool vertmaxed;					/* Vertically maximized, borders */
 	bool fullscreen;				/* Fullscreen, i.e. without border */
-	bool fixed;						/* Visible on all workspaces? */
 	bool hidden;					/* Currently hidden */
 	int killed;						/* number of times we sent delete_window message */
 
@@ -88,8 +86,7 @@ typedef struct client {
 
 	monitor_t *monitor;				/* The physical output this window is on. */
 	list_t *winitem;				/* Pointer to our place in global windows list. */
-	list_t *wsitem[WORKSPACES];		/* Pointer to our place in every
-									 * workspace window list. */
+	list_t *wsitem[WORKSPACES];					/* Pointer to our place in workspace window tree. */
 } client_t;
 
 /* Window configuration data. */

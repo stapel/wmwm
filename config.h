@@ -62,12 +62,6 @@
 //#define UNFOCUSCOL "grey50"
 #define UNFOCUSCOL "#003383"
 
-/* Ditto for fixed windows. Use "-x color". */
-#define FIXEDCOL "#ff0000"
-
-/* Ditto for unfocused fixed windows. use "-X color" */
-#define FIXEDUFCOL "#9e0000"
-
 /* Default width of border window, in pixels. Used unless -b width. */
 #define BORDERWIDTH 1
 
@@ -75,7 +69,6 @@
  * Keysym codes for window operations. Look in X11/keysymdefs.h for
  * actual symbols.
  */
-#define USERKEY_FIX			XK_F
 #define USERKEY_MOVE_LEFT	XK_H
 #define USERKEY_MOVE_DOWN	XK_J
 #define USERKEY_MOVE_UP		XK_K

@@ -27,6 +27,7 @@
 
 #include "wmwm.h"
 
+#include <assert.h>
 #include <errno.h>            // for EINTR, errno
 #include <getopt.h>           // for optarg, getopt
 #include <poll.h>             // for pollfd, poll, POLLIN
@@ -52,6 +53,9 @@
 
 /* list functions */
 #include "list.h"             // for list_t, list_add, list_to_head, list_erase...
+
+/* container functions */
+#include "container_tree.h"
 
 
 /* Check here for user configurable parts: */
@@ -157,33 +161,17 @@ uint32_t curws = 0;				/* Current workspace. */
 int16_t mode_x = 0;
 int16_t mode_y = 0;
 
-client_t *focuswin = NULL;		/* Current focus window. */
-client_t *lastfocuswin = NULL;	/* Last focused window. NOTE! Only
-								 * used to communicate between
-								 * start and end of tabbing
-								 * mode. */
-
-list_t *winlist = NULL;			/* Global list of all client windows. */
 list_t *monlist = NULL;			/* List of all physical monitor outputs. */
 
 wm_mode_t MCWM_mode = mode_nothing;		/* Internal mode, such as move or resize */
+
+tiling_mode_t tiling_mode = DEFAULT_TILING_MODE; /* current tiling mode */
 
 /*
  * Workspace list: Every workspace has a list of all visible
  * windows.
  */
-list_t *wslist[WORKSPACES] = {
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL
-};
+workspace_t wslist[WORKSPACES];
 
 /* Shortcut key type and initialization. */
 struct keys {
@@ -321,7 +309,6 @@ static void raise_or_lower_client(client_t *client);
 static void set_focus(client_t *client);
 static void unset_focus();
 static void focus_next(void);
-static void finish_tab(void);
 
 static void toggle_fullscreen(client_t *client);
 static void toggle_vertical(client_t *client);
@@ -330,7 +317,7 @@ static void unmax(client_t *client);
 static void attach_frame(client_t *client);
 static void delete_win(client_t*);
 static void hide(client_t *client);
-static void remove_client(client_t *client);
+static void erase_client(client_t *client);
 static void show(client_t *client);
 
 static void send_client_message(xcb_window_t window, xcb_atom_t atom);
@@ -380,6 +367,7 @@ static bool get_geometry(xcb_drawable_t win, xcb_rectangle_t *geometry);
 static void set_hidden_events(client_t *client);
 static void set_default_events(client_t *client);
 
+
 static void warp_focuswin(step_direction_t direction);
 static void prev_screen(void);
 static void next_screen(void);
@@ -392,7 +380,38 @@ static void get_monitor_geometry(monitor_t* monitor, xcb_rectangle_t* sp);
 
 static void cleanup(int code);
 
+/**********************************************************************/
+/* new functions for tiling-branch */
+
+static client_t *focuswin(uint32_t ws);
+static void set_focuswin(uint32_t ws, client_t* client);
+
+/* setup workspace array */
+static void setup_workspaces();
+
 /* Function bodies. */
+/* new functions for tiling-branch */
+void setup_workspaces()
+{
+	for (uint32_t i = 0; i < WORKSPACES; i++) {
+		wslist[i].focuswin = NULL;
+		wslist[i].root = ctree_new_tiling(tiling_mode);
+	}
+}
+
+client_t *focuswin(uint32_t ws)
+{
+	assert(ws < WORKSPACES);
+	return wslist[ws].focuswin;
+}
+
+void set_focuswin(uint32_t ws, client_t* client)
+{
+	assert(ws < WORKSPACES);
+	wslist[ws].focuswin = client;
+}
+/**********************************************************************/
+
 // XXX this is just a little precaution and encapsulation
 static void			set_mode(wm_mode_t modus)	{ MCWM_mode = modus; }
 static wm_mode_t	get_mode(void)				{ return MCWM_mode; }
@@ -401,6 +420,7 @@ static bool			is_mode(wm_mode_t modus)	{ return (get_mode() == modus); }
 static xcb_timestamp_t get_timestamp() { return current_time; }
 static void set_timestamp(xcb_timestamp_t t) { current_time = t; }
 static void update_timestamp(xcb_timestamp_t t) { if (t != XCB_TIME_CURRENT_TIME) current_time = t; }
+
 
 /* check if pointer is over client */
 /* XXX check for workspace and monitor */
@@ -435,7 +455,7 @@ void ewmh_update_state(client_t* client)
 		atoms[i++] = ewmh->_NET_WM_STATE_MAXIMIZED_VERT;
 	if (client->hidden)
 		atoms[i++] = ewmh->_NET_WM_STATE_HIDDEN;
-	if (client == focuswin)
+	if (client == focuswin(curws))
 		atoms[i++] = ewmh__NET_WM_STATE_FOCUSED;
 
 	if (i > 0) {
@@ -445,28 +465,6 @@ void ewmh_update_state(client_t* client)
 		/* remove atom if there's no state and an old atom */
 		xcb_delete_property(conn, client->id, ewmh->_NET_WM_STATE);
 		client->ewmh_state_set = false;
-	}
-}
-
-/*
- * MODKEY was released after tabbing around the
- * workspace window ring. This means this mode is
- * finished and we have found a new focus window.
- *
- * We need to move first the window we used to focus
- * on to the head of the window list and then move the
- * new focus to the head of the list as well. The list
- * should always start with the window we're focusing
- * on.
- */
-void finish_tab(void)
-{
-	PDEBUG("Finish tabbing!\n");
-	set_mode(mode_nothing);
-
-	if (lastfocuswin && focuswin) {
-		list_to_head(&wslist[curws], lastfocuswin->wsitem[curws]);
-		lastfocuswin = NULL;
 	}
 }
 
@@ -571,10 +569,7 @@ void arrangewindows(void)
 	 * Go through all windows. If they don't fit on the new screen,
 	 * move them around and resize them as necessary.
 	 */
-	for (list_t *item = winlist; item; item = item->next) {
-		client_t *client = item->data;
-		update_geometry(client, NULL);
-	}
+	/* TODO tiling */
 }
 /*
  * set _NET_CLIENT_LIST
@@ -585,6 +580,8 @@ void arrangewindows(void)
  */
 void ewmh_update_client_list()
 {
+// TODO tiling
+#if 0
 	list_t *item;
 	xcb_window_t *window_list;
 
@@ -614,6 +611,7 @@ void ewmh_update_client_list()
 	}
 	xcb_ewmh_set_client_list(ewmh, screen_number, windows, window_list);
 	destroy(window_list);
+#endif
 }
 
 /*
@@ -660,46 +658,43 @@ uint32_t ewmh_get_workspace(xcb_drawable_t win)
 }
 
 /*
- * set client to one/all or no workspace
+ * set client to one or no workspace
  */
 void set_workspace(client_t *client, uint32_t ws)
 {
-	list_t *item;
+	assert(client != NULL);
+	assert((ws < WORKSPACES) || (ws == WORKSPACE_NONE));
 
 	PDEBUG("set workspace for 0x%x to %u\n", client->id, ws);
 
-	/* remove from all workspaces but ws */
-	for (uint32_t i = 0; i < WORKSPACES; i++) {
-		if (i != ws && client->wsitem[i]) {
-			list_remove(&wslist[i], client->wsitem[i]);
-			client->wsitem[i] = NULL;
-		}
-	}
+	if (client->ws == ws)
+		return;
 
-	/* add if not hidden or already */
-	if (ws != WORKSPACE_NONE && ! client->wsitem[ws]) {
-		/* add to destined workspace */
-		if ((item = list_add(&wslist[ws])) == NULL) {
-			perror("wmwm");
-			return;
-		}
-		client->wsitem[ws] = item;
-		item->data = client;
+	/* Is it currently on any workspace */
+	if (client->ws != WORKSPACE_NONE) {
+		ctree_remove(client->wsitem);
+		if (focuswin(client->ws) == client)
+			set_focuswin(client->ws, NULL);
 	}
+	client->ws = ws;
 
-	/* Set _NET_WM_DESKTOP accordingly or leave it  */
+	/* new workspace */
 	if (ws != WORKSPACE_NONE) {
+	   	if (focuswin(ws)) {
+			/* add after focuswin */
+			ctree_add_sibling(focuswin(ws)->wsitem, client->wsitem);
+		} else {
+			/* add child of root */
+			ctree_append_child(wslist[ws].root, client->wsitem);
+		}
+		/* Set _NET_WM_DESKTOP accordingly or leave it  */
 		xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
 	}
 }
 
-
 /* Change current workspace to ws. */
 void change_workspace(uint32_t ws)
 {
-	list_t *item;
-	client_t *client;
-
 	if (ws == curws) {
 		return;
 	}
@@ -710,41 +705,25 @@ void change_workspace(uint32_t ws)
 	 * We lose our focus if the window we focus isn't fixed. An
 	 * EnterNotify event will set focus later.
 	 */
-	if (focuswin)
+	if (focuswin(curws))
 		unset_focus();
 
 	/* Apply hidden window event mask, this ensures no invalid enter events */
-	for (item = wslist[curws]; item; item = item->next) {
-		client = item->data;
-		set_hidden_events(client);
-	}
+	ctree_traverse_clients(wslist[curws].root, &set_hidden_events);
 
 	/* Go through list of current ws. Unmap everything that isn't fixed. */
-	for (item = wslist[curws]; item; item = item->next) {
-		client = item->data;
-		/*
-		 * This is an ordinary window. Just unmap it. Note that
-		 * this will generate an unnecessary UnmapNotify event
-		 * which we will try to handle later.
-		 */
-		hide(client);
-	}
+	ctree_traverse_clients(wslist[curws].root, &hide);
 
 	/* Set the new current workspace */
 	xcb_ewmh_set_current_desktop(ewmh, screen_number, ws);
+
 	curws = ws;
 
 	/* Go through list of new ws. Map everything that isn't fixed. */
-	for (item = wslist[curws]; item; item = item->next) {
-		client = item->data;
-		show(client);
-	}
+	ctree_traverse_clients(wslist[curws].root, &show);
 
 	/* Re-enable enter events */
-	for (item = wslist[ws]; item; item = item->next) {
-		client = item->data;
-		set_default_events(client);
-	}
+	ctree_traverse_clients(wslist[curws].root, &set_default_events);
 
 	/* Map the windows now */
 	xcb_flush(conn);
@@ -1135,28 +1114,17 @@ void icccm_update_wm_protocols(client_t* client)
  * */
 client_t *create_client(xcb_window_t win)
 {
-	list_t *item;
 	client_t *client;
-	uint32_t ws;
 
 	/* Add this window to the X Save Set. */
+	/* XXX move this to appropriate point, e.g. after setting hooks etc */
 	xcb_change_save_set(conn, XCB_SET_MODE_INSERT, win);
-
-	/* Remember window and store a few things about it. */
-	item = list_add(&winlist);
-
-	if (! item) {
-		PERROR("create_client: Out of memory.\n");
-		return NULL;
-	}
 
 	client = calloc(1, sizeof(client_t));
 	if (! client) {
 		PERROR("create_client: Out of memory.\n");
 		return NULL;
 	}
-
-	item->data = client;
 
 	/* Initialize client. */
 	client->id = win;
@@ -1176,17 +1144,15 @@ client_t *create_client(xcb_window_t win)
 	client->allow_focus = true;
 	client->colormap = screen->default_colormap;
 
-	client->winitem = item;
-	for (ws = 0; ws < WORKSPACES; ws++) {
-		client->wsitem[ws] = NULL;
-	}
+	client->ws = WORKSPACE_NONE;
+	client->wsitem = ctree_new_client(client);
 
 	PDEBUG("Adding window 0x%x\n", client->id);
 
 	/* Get window geometry. */
 	if (! get_geometry(client->id, &client->geometry)) {
 		PDEBUG("Couldn't get geometry in initial setup of window. Reject managing.\n");
-		remove_client(client);
+		erase_client(client);
 		return NULL;
 	}
 	client->geometry_last = client->geometry;
@@ -1734,6 +1700,8 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 			 * Check if it was used before. If it was, do something.
 			 */
 			if ((mon = find_monitor(outputs[i]))) {
+// XXX tiling
+#if 0
 				list_t *item;
 				client_t *client;
 
@@ -1764,6 +1732,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 
 				/* It's not active anymore. Forget about it. */
 				del_monitor(mon);
+#endif
 			}
 		}
 		destroy(name);
@@ -1774,19 +1743,22 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 
 void arrbymon(monitor_t *monitor)
 {
-	client_t *client;
+//	client_t *client;
 
 	PDEBUG("arrbymon\n");
 	/*
 	 * Go through all windows on this monitor. If they don't fit on
 	 * the new screen, move them around and resize them as necessary.
 	 */
+// TODO tiling
+#if 0
 	for (list_t *item = winlist; item; item = item->next) {
 		client = item->data;
 		if (client->monitor == monitor) {
 			update_geometry(client, NULL);
 		}
 	}							/* for */
+#endif
 }
 
 monitor_t *find_monitor(xcb_randr_output_t id)
@@ -1913,77 +1885,16 @@ void raise_or_lower_client(client_t *client)
 	xcb_configure_window(conn, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
 
-/* Change focus to next in window ring. */
-void focus_next(void)
-{
-	client_t *client = NULL;
-
-	if (! wslist[curws]) {
-		PDEBUG("No windows to focus on in this workspace.\n");
-		return;
-	}
-
-	if (! is_mode(mode_tab)) {
-		/*
-		 * Remember what we last focused on. We need this when the
-		 * MODKEY is released and we move the last focused window in
-		 * the tabbing order list.
-		 */
-		lastfocuswin = focuswin;
-		set_mode(mode_tab);
-
-		PDEBUG("Began tabbing.\n");
-	}
-
-	/* If we currently have no focus focus first in list. */
-	if (! focuswin || ! focuswin->wsitem[curws]) {
-		PDEBUG("Focusing first in list: @%p\n", (void*)wslist[curws]);
-		client = wslist[curws]->data;
-	} else {
-		if (! focuswin->wsitem[curws]->next) {
-			/*
-			 * We were at the end of list. Focusing on first window in
-			 * list unless we were already there.
-			 */
-			if (focuswin->wsitem[curws] != wslist[curws]->data) {
-				PDEBUG("End of list. Focusing first in list: @%p\n",
-						(void*)wslist[curws]);
-				client = wslist[curws]->data;
-			}
-		} else {
-			/* Otherwise, focus the next in list. */
-			PDEBUG("Tabbing. Focusing next: @%p.\n",
-					(void*)focuswin->wsitem[curws]->next);
-			client = focuswin->wsitem[curws]->next->data;
-		}
-	}							/* if NULL focuswin */
-
-	if (client && client != focuswin) {
-		/*
-		 * Raise window if it's occluded, then warp pointer into it and
-		 * set keyboard focus to it.
-		 */
-		uint32_t values[] = { XCB_STACK_MODE_TOP_IF };
-		xcb_configure_window(conn, client->frame,
-				XCB_CONFIG_WINDOW_STACK_MODE, values);
-
-		if (! pointer_over_client(client)) {
-			xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->frame, 0, 0, 0, 0,
-					client->geometry.width / 2, client->geometry.height / 2);
-		}
-		set_focus(client);
-	}
-}
-
 /* Mark window win as unfocused. */
 void unset_focus()
 {
-	PDEBUG("unset_focus() focuswin = 0x%x\n", focuswin ? focuswin->id : 0);
-	if (! focuswin)
+	PDEBUG("unset_focus() focuswin = 0x%x\n",
+			focuswin(curws) ? focuswin(curws)->id : 0);
+	if (! focuswin(curws))
 		return;
 
-	client_t *client = focuswin;
-	focuswin = NULL;
+	client_t *client = focuswin(curws);
+	set_focuswin(curws, NULL);
 	ewmh_update_state(client);
 	/* Set new border color. */
 	update_bordercolor(client);
@@ -1995,6 +1906,29 @@ void unset_focus()
  *
  * Returns client pointer or NULL if not found.
  */
+
+
+bool find_client_helper(client_t *client, void *arg)
+{
+	assert(client != NULL);
+	assert(arg != NULL);
+
+	return (client->id == *((xcb_window_t*)(arg)));
+}
+
+
+bool find_clientp_helper(client_t *client, void *arg)
+{
+	assert(client != NULL);
+	assert(arg != NULL);
+
+	if ((client->id == *((xcb_window_t*)(arg))) ||
+			(client->frame == *((xcb_window_t*)(arg))))
+		return true;
+	else
+		return false;
+}
+
 client_t *find_clientp(xcb_drawable_t win)
 {
 	if (win == XCB_WINDOW_NONE)
@@ -2003,17 +1937,22 @@ client_t *find_clientp(xcb_drawable_t win)
 	if (win == screen->root)
 		return NULL;
 
-	if (focuswin && (focuswin->id == win || focuswin->frame == win))
-		return focuswin;
+	/* check current workspace first */
+	client_t *client =
+		ctree_find_client(wslist[curws].root, &find_clientp_helper, &win);
 
-	for (list_t *item = winlist; item; item = item->next) {
-		client_t *client = item->data;
-		if (win == client->id) {
+	if (client)
+		return client;
+
+	for (uint32_t i = 0; i < WORKSPACES; i++) {
+		if (i == curws)
+			continue;
+
+		client = ctree_find_client(wslist[i].root, &find_clientp_helper, &win);
+		if (client)
 			return client;
-		} else if (win == client->frame) {
-			return client;
-		}
 	}
+
 	return NULL;
 }
 
@@ -2030,12 +1969,18 @@ client_t *find_client(xcb_drawable_t win)
 	if (win == screen->root)
 		return NULL;
 
-	if (focuswin && focuswin->id == win)
-		return focuswin;
+	/* XXX: focuswin */
+	/* check current workspace first */
+	client_t *client = ctree_find_client(wslist[curws].root, &find_client_helper, &win);
+	if (client)
+		return client;
 
-	for (list_t *item = winlist; item; item = item->next) {
-		client_t *client = item->data;
-		if (win == client->id)
+	for (uint32_t i = 0; i < WORKSPACES; i++) {
+		if (i == curws)
+			continue;
+
+		client = ctree_find_client(wslist[i].root, &find_client_helper, &win);
+		if (client)
 			return client;
 	}
 	return NULL;
@@ -2045,7 +1990,8 @@ client_t *find_client(xcb_drawable_t win)
 void set_focus(client_t *client)
 {
 	PDEBUG("set_focus: client = 0x%x (focuswin = 0x%x)\n",
-			client ? client->id : 0, focuswin ? focuswin->id : 0);
+			client ? client->id : 0,
+			focuswin(curws) ? focuswin(curws)->id : 0);
 
 	/* If client is NULL, focus on root */
 	if (! client) {
@@ -2059,9 +2005,9 @@ void set_focus(client_t *client)
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
 
 		/* mark current focuswin as no longer focused */
-		if (focuswin) {
-			client = focuswin;
-			focuswin = NULL;
+		if (focuswin(curws)) {
+			client = focuswin(curws);
+			set_focuswin(curws, NULL);
 			ewmh_update_state(client);
 		}
 
@@ -2069,11 +2015,7 @@ void set_focus(client_t *client)
 	}
 
 	/* Don't bother focusing on the same window that already has focus */
-	if (client == focuswin)
-		return;
-
-	/* Don't bother if the client is not on this workspace */
-	if (! client->wsitem[curws])
+	if (client == focuswin(curws))
 		return;
 
 	/* set input focus (preferred) or
@@ -2088,11 +2030,11 @@ void set_focus(client_t *client)
 	}
 
 	/* Unset last focus. */
-	if (focuswin)
+	if (focuswin(curws))
 		unset_focus();
 
 	/* Remember the new window as the current focused window. */
-	focuswin = client;
+	set_focuswin(curws, client);
 
 	/* Set new border color. */
 	update_bordercolor(client);
@@ -2296,7 +2238,7 @@ void update_bordercolor(client_t *client)
 	uint32_t color[1];
 	if (! client)
 		return;
-	if (client == focuswin)
+	if (client == focuswin(curws))
 		color[0] = conf.focuscol;
 	else
 		color[0] = conf.unfocuscol;
@@ -2468,17 +2410,16 @@ void hide(client_t *client)
 }
 
 /* Forget everything about client client. */
-void remove_client(client_t *client)
+void erase_client(client_t *client)
 {
-	PDEBUG("remove_client: forgetting about win 0x%x\n", client->id);
+	PDEBUG("erase_client: forgetting about win 0x%x\n", client->id);
 
 	xcb_generic_error_t *error = NULL;
 
 	/* set_focus ? XXX */
-	if (focuswin == client)
-		focuswin = NULL;
-	if (lastfocuswin == client)
-		lastfocuswin = NULL;
+	for (uint32_t ws = 0; ws < WORKSPACES; ws++)
+		if (focuswin(ws) == client)
+			set_focuswin(ws, NULL);
 
 	if (client->frame != XCB_WINDOW_NONE) {
 		error = xcb_request_check(conn,
@@ -2486,6 +2427,7 @@ void remove_client(client_t *client)
 		xcb_destroy_window(conn, client->frame);
 	}
 
+// TODO tiling
 	/* remove from all workspaces */
 	set_workspace(client, WORKSPACE_NONE);
 
@@ -2495,8 +2437,7 @@ void remove_client(client_t *client)
 	if (error)
 		destroy(error);
 
-	/* Remove from global window list. */
-	list_erase(&winlist, NULL, client->winitem);
+	ctree_free(client->wsitem);
 	ewmh_update_client_list();
 }
 
@@ -2590,17 +2531,17 @@ void warp_focuswin(step_direction_t direction)
 	int16_t pointx;
 	int16_t pointy;
 
-	if (! focuswin || focuswin->fullscreen)
+	if (! focuswin(curws) || focuswin(curws)->fullscreen)
 		return;
 
 	xcb_rectangle_t mon;
-	xcb_rectangle_t geo = focuswin->geometry;
+	xcb_rectangle_t geo = focuswin(curws)->geometry;
 
-	get_monitor_geometry(focuswin->monitor, &mon);
+	get_monitor_geometry(focuswin(curws)->monitor, &mon);
 
-	raise_client(focuswin);
+	raise_client(focuswin(curws));
 
-	if (!get_pointer(focuswin->id, &pointx, &pointy))
+	if (!get_pointer(focuswin(curws)->id, &pointx, &pointy))
 		return;
 
 	if (direction & step_left)
@@ -2612,8 +2553,8 @@ void warp_focuswin(step_direction_t direction)
 	if (direction & step_down)
 		geo.y = mon.y + mon.height - (geo.height + conf.borderwidth * 2);
 
-	if (update_geometry(focuswin, &geo))
-		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
+	if (update_geometry(focuswin(curws), &geo))
+		xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin(curws)->frame,
 				0, 0, 0, 0, pointx, pointy);
 }
 
@@ -2679,20 +2620,20 @@ void prev_screen(void)
 {
 	list_t *item;
 
-	if (! focuswin || ! focuswin->monitor)
+	if (! focuswin(curws) || ! focuswin(curws)->monitor)
 		return;
 
-	item = focuswin->monitor->item->prev;
+	item = focuswin(curws)->monitor->item->prev;
 
 	if (! item)
 		return;
 
-	focuswin->monitor = item->data;
+	focuswin(curws)->monitor = item->data;
 
-	raise_client(focuswin);
-	update_geometry(focuswin, NULL);
+	raise_client(focuswin(curws));
+	update_geometry(focuswin(curws), NULL);
 
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin(curws)->frame,
 			0, 0, 0, 0, 0, 0);
 }
 
@@ -2701,20 +2642,20 @@ void next_screen(void)
 {
 	list_t *item;
 
-	if (! focuswin || ! focuswin->monitor)
+	if (! focuswin(curws) || ! focuswin(curws)->monitor)
 		return;
 
-	item = focuswin->monitor->item->next;
+	item = focuswin(curws)->monitor->item->next;
 
 	if (! item)
 		return;
 
-	focuswin->monitor = item->data;
+	focuswin(curws)->monitor = item->data;
 
-	raise_client(focuswin);
-	update_geometry(focuswin, NULL);
+	raise_client(focuswin(curws));
+	update_geometry(focuswin(curws), NULL);
 
-	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame,
+	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin(curws)->frame,
 			0, 0, 0, 0, 0, 0);
 }
 
@@ -2911,7 +2852,7 @@ void handle_colormap_notify(xcb_generic_event_t *ev)
 	/* colormap has changed (not un/-installed) */
 	if (e->_new && (c = find_client(e->window))) {
 		c->colormap = e->colormap;
-		if (c == focuswin)
+		if (c == focuswin(curws))
 			xcb_install_colormap(conn, e->colormap);
 	}
 }
@@ -2952,8 +2893,8 @@ void handle_button_press(xcb_generic_event_t* ev)
 	 * cursor is in the wrong window (root window or a panel,
 	 * for instance). There is a limit to sloppy focus.
 	 */
-	if (! focuswin
-			|| (focuswin->frame != e->child && focuswin->id != e->child)) {
+	if (! focuswin(curws)
+			|| (focuswin(curws)->frame != e->child && focuswin(curws)->id != e->child)) {
 		PDEBUG("Somehow in the wrong window?\n");
 		return;
 	}
@@ -2963,24 +2904,24 @@ void handle_button_press(xcb_generic_event_t* ev)
 	 * it if it was already on top.
 	 */
 	if (e->detail == 2) {
-		raise_or_lower_client(focuswin);
+		raise_or_lower_client(focuswin(curws));
 		return;
 	}
 
 	/* We're moving or resizing, ignore when maxed. */
-	if (focuswin->fullscreen)
+	if (focuswin(curws)->fullscreen)
 		return;
 
 	/*
 	 * Get and save pointer position inside the window
 	 * so we can keep our pointer fixed while moving.
 	 */
-	if (! get_pointer(focuswin->frame, &mode_x, &mode_y)) {
+	if (! get_pointer(focuswin(curws)->frame, &mode_x, &mode_y)) {
 		PDEBUG("Could not get pointer?\n");
 		return;
 	}
 
-	raise_client(focuswin);
+	raise_client(focuswin(curws));
 
 	switch (e->detail) {
 		case 1: /* left button: move */
@@ -2989,9 +2930,9 @@ void handle_button_press(xcb_generic_event_t* ev)
 		case 3: /* right button: resize */
 			set_mode(mode_resize);
 			/* Warp pointer to lower right. Ignore gravity.  */
-			xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin->frame, 0,
-					0, 0, 0, focuswin->geometry.width,
-					focuswin->geometry.height);
+			xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin(curws)->frame, 0,
+					0, 0, 0, focuswin(curws)->geometry.width,
+					focuswin(curws)->geometry.height);
 			break;
 	}
 
@@ -3029,7 +2970,7 @@ void handle_motion_notify(xcb_generic_event_t *ev)
 	 * We can't do anything if we don't have a focused window
 	 * or if it's fully maximized.
 	 */
-	if (! focuswin || focuswin->fullscreen)
+	if (! focuswin(curws) || focuswin(curws)->fullscreen)
 		return;
 
 	/*
@@ -3037,9 +2978,9 @@ void handle_motion_notify(xcb_generic_event_t *ev)
 	 * we're either resizing or moving a window.
 	 */
 	if (is_mode(mode_move))
-		mouse_move(focuswin, e->root_x - mode_x, e->root_y - mode_y);
+		mouse_move(focuswin(curws), e->root_x - mode_x, e->root_y - mode_y);
 	else if (is_mode(mode_resize))
-		mouse_resize(focuswin, e->root_x, e->root_y);
+		mouse_resize(focuswin(curws), e->root_x, e->root_y);
 #if DEBUG
 	else
 		PDEBUG("Motion event when we're not moving our resizing! \n");
@@ -3059,7 +3000,7 @@ void handle_button_release(xcb_generic_event_t *ev)
 		return;
 
 	/* We're finished moving or resizing. */
-	if (! focuswin) {
+	if (! focuswin(curws)) {
 		PDEBUG("No focused window when finished moving or resizing!");
 		/*
 		 * We don't seem to have a focused window! Just
@@ -3096,10 +3037,6 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	key_enum_t key = key_from_keycode(e->detail);
 
-	/* First finish tabbing around. Then deal with the next key. */
-	if (is_mode(mode_tab) && key != KEY_NEXT)
-		finish_tab();
-
 	/* TODO impossible -> grabbed keys ? */
 	/* XXX: This happens for Meta_L/Alt_L */
 	if (key == KEY_MAX) {
@@ -3119,19 +3056,19 @@ void handle_key_press(xcb_generic_event_t *ev)
 		case EXTRA_MODKEY:
 			switch (key) {
 				case KEY_LEFT:		/* left */
-					resize_step(focuswin, step_left);
+					resize_step(focuswin(curws), step_left);
 					break;
 
 				case KEY_DOWN:		/* down */
-					resize_step(focuswin, step_up);
+					resize_step(focuswin(curws), step_up);
 					break;
 
 				case KEY_UP:		/* up */
-					resize_step(focuswin, step_down);
+					resize_step(focuswin(curws), step_down);
 					break;
 
 				case KEY_RIGHT:		/* right */
-					resize_step(focuswin, step_right);
+					resize_step(focuswin(curws), step_right);
 					break;
 
 				default:
@@ -3143,7 +3080,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 		case MODKEY:
 			switch (key) {
 				case KEY_NEXT:			/* tab */
-					focus_next();
+//					focus_next(); // XXX: tiling
 					break;
 
 				case KEY_TERMINAL:		/* return */
@@ -3155,31 +3092,36 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_LEFT:		/* left */
-					move_step(focuswin, step_left);
+					move_step(focuswin(curws), step_left);
 					break;
 
 				case KEY_DOWN:		/* down */
-					move_step(focuswin, step_down);
+					move_step(focuswin(curws), step_down);
 					break;
 
 				case KEY_UP:		/* up */
-					move_step(focuswin, step_up);
+					move_step(focuswin(curws), step_up);
 					break;
 
 				case KEY_RIGHT:		/* right */
-					move_step(focuswin, step_right);
+					move_step(focuswin(curws), step_right);
 					break;
 
 				case KEY_VERTICAL:		/* v */
-					toggle_vertical(focuswin);
+					if (tiling_mode == TILING_HORIZONTAL)
+						tiling_mode = TILING_VERTICAL;
+					else
+						tiling_mode = TILING_HORIZONTAL;
+
+	//				toggle_vertical(focuswin(curws));
 					break;
 
 				case KEY_RAISE_LOWER:		/* r */
-					raise_or_lower_client(focuswin);
+					raise_or_lower_client(focuswin(curws));
 					break;
 
 				case KEY_MAXIMIZE:		/* x */
-					toggle_fullscreen(focuswin);
+					toggle_fullscreen(focuswin(curws));
 					break;
 
 				case KEY_WS1:
@@ -3239,7 +3181,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_KILL:
-					delete_win(focuswin);
+					delete_win(focuswin(curws));
 					break;
 
 				case KEY_PREVSCR:
@@ -3253,9 +3195,9 @@ void handle_key_press(xcb_generic_event_t *ev)
 				case KEY_ICONIFY:
 					if (conf.allowicons) {
 						/* hide and remove from workspace list */
-						set_hidden_events(focuswin);
-						hide(focuswin);
-						set_workspace(focuswin, WORKSPACE_NONE);
+						set_hidden_events(focuswin(curws));
+						hide(focuswin(curws));
+						set_workspace(focuswin(curws), WORKSPACE_NONE);
 					}
 					break;
 				default:
@@ -3271,10 +3213,6 @@ void handle_key_release(xcb_generic_event_t *ev)
 {
 	xcb_key_release_event_t *e = (xcb_key_release_event_t *) ev;
 	update_timestamp(e->time);
-
-	/* if we were tabbing, finish */
-	if (is_mode(mode_tab) && key_from_keycode(e->detail) != KEY_NEXT)
-		finish_tab();
 }
 
 void handle_enter_notify(xcb_generic_event_t *ev)
@@ -3307,7 +3245,7 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 
 	if (e->event == screen->root) {
 		/* root window entered */
-		if (! focuswin) {
+		if (! focuswin(curws)) {
 			/* No window has the focus, it might be reverted to 0x0,
 			 * so we set it on under a window the cursor.
 			 */
@@ -3321,7 +3259,7 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	 * or cannot find a client, then don't bother focusing.
 	 */
 	client_t *client = find_clientp(e->event);
-	if (! client || client == focuswin)
+	if (! client || client == focuswin(curws))
 		return;
 
 	/*
@@ -3330,6 +3268,8 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	 * know about. If not, just keep focus in the old
 	 * window.
 	 */
+/* TODO tiling */
+#if 0
 	if (! is_mode(mode_tab)) {
 		/*
 		 * We are focusing on a new window. Since
@@ -3340,15 +3280,15 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 		 * list and then the new focus to the head
 		 * of the list.
 		 */
-		if (focuswin) {
+		if (focuswin(curws)) {
 			list_to_head(&wslist[curws],
-					focuswin->wsitem[curws]);
-			lastfocuswin = NULL;
+					focuswin(curws)->wsitem[curws]);
 		}
 
 		list_to_head(&wslist[curws],
 				client->wsitem[curws]);
 	} /* if not tabbing */
+#endif
 
 	set_focus(client);
 }
@@ -3658,7 +3598,7 @@ void handle_unmap_notify(xcb_generic_event_t *ev)
 		PDEBUG("unmap_notify for 0x%x [synthetic]\n", e->window);
 	}
 #endif
-	remove_client(client);
+	erase_client(client);
 }
 
 void handle_destroy_notify(xcb_generic_event_t *ev)
@@ -3676,7 +3616,7 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 	PDEBUG("destroy_notify for 0x%x (is client = %d)\n", e->window, client ? 1 : 0);
 
 	if (client)
-		remove_client(client);
+		erase_client(client);
 }
 
 void print_help(void)
@@ -3870,6 +3810,9 @@ int main(int argc, char **argv)
 	/* Get some colors. */
 	conf.focuscol = getcolor(focuscol);
 	conf.unfocuscol = getcolor(unfocuscol);
+
+
+	setup_workspaces();
 
 	/* setup EWMH */
 	if (! setup_ewmh()) {

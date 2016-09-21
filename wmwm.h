@@ -7,6 +7,7 @@
 #include <xcb/xcb_icccm.h>  // for xcb_size_hints_t
 #include <xcb/xproto.h>     // for xcb_drawable_t, xcb_rectangle_t, xcb_colo...
 #include "list.h"           // for list_t
+#include "tree.h"
 
 /* Number of workspaces. */
 #define WORKSPACES 10u
@@ -85,8 +86,13 @@ typedef struct client {
 	bool ignore_unmap;				/* unmap_notification we shall ignore */
 
 	monitor_t *monitor;				/* The physical output this window is on. */
-	list_t *winitem;				/* Pointer to our place in global windows list. */
-	list_t *wsitem[WORKSPACES];					/* Pointer to our place in workspace window tree. */
+	/* XXX tiling: set after create_client */
+
+	/* XXX tiling: make this an array to have multitags */
+	tree_t *wsitem;	/* Pointer to our place in workspaces
+									   window tree. */
+	uint32_t ws;
+
 } client_t;
 
 /* Window configuration data. */
@@ -99,5 +105,12 @@ typedef struct winconf {
 	xcb_window_t sibling;
 	uint16_t borderwidth;
 } winconf_t;
+
+
+/* New types for tiling-branch */
+typedef struct workspaces {
+	client_t *focuswin; /* last focused window */
+	tree_t   *root;     /* root node for workdesk */
+} workspace_t;
 
 #endif /* __WMWM__WMWM_H__ */

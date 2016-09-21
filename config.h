@@ -1,5 +1,10 @@
 /* User configurable stuff. */
 #include <X11/keysym.h>  // for XK_0, XK_1, XK_2, XK_3, XK_4, XK_5, XK_6
+
+
+/* default tiling mode for new window */
+#define DEFAULT_TILING_MODE TILING_HORIZONTAL
+
 /*
  * Move this many pixels when moving or resizing with keyboard unless
  * the window has hints saying otherwise.

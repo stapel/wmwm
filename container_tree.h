@@ -94,6 +94,7 @@ bool ctree_is_tiling(ctree_t *node);
 /* create new node with client/tiling "container" */
 ctree_t* ctree_new_client(client_t *client);
 ctree_t* ctree_new_tiling(tiling_t tile);
+void ctree_replace_tile(ctree_t *tiler, ctree_t *client);
 
 
 tiling_t ctree_tiling(ctree_t *node);

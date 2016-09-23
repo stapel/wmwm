@@ -429,7 +429,7 @@ void adjust_container(tree_t *node)
 
 void adjust_windows(uint32_t ws)
 {
-	
+
 }
 
 /**********************************************************************/
@@ -684,21 +684,22 @@ void update_clues(tree_t *node, xcb_rectangle_t rect)
 	if (node == NULL)
 		return;
 
-
+	show_node("update 1", node);
 	if (ctree_is_tiling(node)) {
 		xcb_rectangle_t tmp = rect;
 		int tiles = ctree_get_tiles(node);
 
 		fprintf(stderr, "0x%x is tiling with %d clients\n", node, tiles);
 
+		// fix position for the tiling container
+		if (node->prev && node->parent) {
+			if (ctree_tiling(node->parent) == TILING_VERTICAL)
+				tmp.x += rect.width;
+			if (ctree_tiling(node->parent) == TILING_HORIZONTAL)
+				tmp.y += rect.height;
+		}
+		// fix width of the tiling container
 		if (tiles > 1) {
-			if (node->prev && node->parent) {
-				if (ctree_tiling(node->parent) == TILING_VERTICAL)
-					tmp.x += rect.width;
-				if (ctree_tiling(node->parent) == TILING_HORIZONTAL)
-					tmp.y += rect.height;
-			}
-
 			if (ctree_tiling(node) == TILING_VERTICAL)
 				tmp.width /= tiles;
 			if (ctree_tiling(node) == TILING_HORIZONTAL)
@@ -742,10 +743,11 @@ void set_workspace(client_t *client, uint32_t ws)
 
 	/* Is it currently on any workspace */
 	if (client->ws != WORKSPACE_NONE) {
-//		ctree_remove(client->wsitem); // XXX tiling
 		if (focuswin(client->ws) == client)
 			set_focuswin(client->ws, NULL);
 	}
+	if (client->wsitem == focuswin(ws))
+		return;
 	client->ws = ws;
 
 	/* new workspace to be added to */
@@ -781,11 +783,22 @@ void set_workspace(client_t *client, uint32_t ws)
 
 			if (ctree_parent_tiling(focuswin(ws)->wsitem) != tiling_mode) {
 				PDEBUG(">>  sw| focuswin different tiling\n");
-				/* New tiling mode, add another tiling container */
+				/* New tiling mode */
 				show_node("focuswin: ", focuswin(ws)->wsitem);
 				show_node("my node : ", client->wsitem);
-				ctree_add_tile_sibling(focuswin(ws)->wsitem,
-						client->wsitem, tiling_mode);
+
+				if (focuswin(ws)->wsitem->prev == NULL && focuswin(ws)->wsitem->next == NULL) {
+					PDEBUG(">>> sw| singlechild \n");
+					// different tiling mode focuswin is only child
+					// just change tiling mode
+					ctree_set_tiling(focuswin(ws)->wsitem->parent, tiling_mode);
+					ctree_add_sibling(focuswin(ws)->wsitem, client->wsitem);
+				} else {
+					PDEBUG(">>> sw| rep current node with tiler and add\n");
+					tree_t *tiler = ctree_new_tiling(tiling_mode);
+					ctree_replace_tile(tiler, focuswin(ws)->wsitem);
+					ctree_append_child(tiler, client->wsitem);
+				}
 			} else {
 				PDEBUG(">>  sw| focuswin same tiling\n");
 				/* add after focuswin */
@@ -801,7 +814,11 @@ void set_workspace(client_t *client, uint32_t ws)
 		xx.height = screen->height_in_pixels;
 		xx.width = screen->width_in_pixels;
 
+		show_node("my node : ", client->wsitem);
+		show_node("root    : ", wslist[ws].root);
+
 		update_clues(wslist[ws].root, xx);
+
 		xcb_flush(conn);
 	}
 }
@@ -2071,7 +2088,7 @@ void update_pos_helper(client_t *client, void *arg)
 			x = y = 0;
 			while (node != NULL) {
 				((container_t*)(node->data))->client
-				
+
 
 			}
 	}
@@ -2609,7 +2626,9 @@ void erase_client(client_t *client)
 		xcb_destroy_window(conn, client->frame);
 	}
 
+
 // TODO tiling
+	ctree_remove(client->wsitem);
 	/* remove from all workspaces */
 	set_workspace(client, WORKSPACE_NONE);
 

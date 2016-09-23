@@ -3,7 +3,7 @@
 
 
 /* default tiling mode for new window */
-#define DEFAULT_TILING_MODE TILING_HORIZONTAL
+#define DEFAULT_TILING_MODE TILING_VERTICAL
 
 /*
  * Move this many pixels when moving or resizing with keyboard unless

@@ -13,7 +13,8 @@ typedef enum tiling_modes {
 	TILING_HORIZONTAL,
 	TILING_VERTICAL,
 	TILING_FLOATING
-} tiling_mode_t;
+} tiling_t;
+
 
 
 /* dumb alias */
@@ -26,11 +27,19 @@ typedef enum container_types {
 	CONTAINER_CLIENT
 } container_type;
 
+
+
+// XXX tiling: fix union and stuff
 /* container */
 typedef struct container {
 	container_type type;
 	union {
-		tiling_mode_t  tile;
+		struct {
+			tiling_t tile;
+			uint16_t  tiles;
+			uint16_t x_scale;
+			uint16_t y_scale;
+		};
 		client_t    *client;
 	};
 } container_t;
@@ -76,12 +85,22 @@ typedef struct container {
 */
 
 
+uint16_t ctree_get_tiles(ctree_t *node);
+client_t *ctree_client(ctree_t *node);
+
 bool ctree_is_client(ctree_t *node);
 bool ctree_is_tiling(ctree_t *node);
 
 /* create new node with client/tiling "container" */
 ctree_t* ctree_new_client(client_t *client);
-ctree_t* ctree_new_tiling(tiling_mode_t tile);
+ctree_t* ctree_new_tiling(tiling_t tile);
+
+
+tiling_t ctree_tiling(ctree_t *node);
+tiling_t ctree_parent_tiling(ctree_t *node);
+
+void ctree_set_tiling(ctree_t *node, tiling_t tiling);
+
 
 /* free node and its data */
 void ctree_free(ctree_t *node);
@@ -94,11 +113,15 @@ int ctree_count_children(ctree_t* parent);
 
 /* add _add_ after _current_ node */
 void ctree_add_sibling(ctree_t *current, ctree_t *node);
+void ctree_add_tile_sibling(ctree_t *current, ctree_t *node,
+		tiling_t tiling);
 void ctree_append_sibling(ctree_t *current, ctree_t *node);
 void ctree_append_child(ctree_t *parent, ctree_t *node);
 
 void ctree_traverse_clients(ctree_t *node, void(*action)(client_t *));
+void ctree_traverse_clients_p(ctree_t *node, void(*action)(client_t *), void *arg);
 
 client_t *ctree_find_client(ctree_t *node, bool(*compare)(client_t*, void *), void *arg);
+client_t *ctree_find_first_client(ctree_t *node);
 
 #endif

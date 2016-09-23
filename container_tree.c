@@ -2,6 +2,18 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include <stdio.h>
+
+
+#ifdef DEBUG
+#define PDEBUG(Args...) \
+	do { fprintf(stderr, "ct: "); fprintf(stderr, ##Args); } while(0)
+#define D(x) x
+#else
+#define PDEBUG(Args...)
+#define D(x)
+#endif
+
 static container_t* container_new()
 {
 	container_t *tmp = calloc(1, sizeof(container_t));
@@ -17,49 +29,95 @@ static container_t* container_new_client(client_t *client)
 	return tmp;
 }
 
-static container_t* container_new_tiling(tiling_mode_t tile)
+static container_t* container_new_tiling(tiling_t tile)
 {
 	container_t *tmp = calloc(1, sizeof(container_t));
 	if (tmp == NULL) return NULL;
+	tmp->x_scale = 0;
+	tmp->y_scale = 0;
 	tmp->type = CONTAINER_TILING;
 	tmp->tile = tile;
+	tmp->tiles = 0;
 	return tmp;
 }
 
+static container_t* ctree_data(ctree_t *node)
+{
+	return ((container_t*)(node->data));
+}
+
+/* increase count of clients in node */
+static void ctree_plus(ctree_t *node)
+{
+	++(ctree_data(node)->tiles);
+	PDEBUG("node+: %p (%d)\n", node, (ctree_data(node)->tiles));
+}
+
+static void ctree_minus(ctree_t *node)
+{
+	assert(ctree_data(node)->tiles != 0);
+	--(ctree_data(node)->tiles);
+	PDEBUG("node-: %p (%d)\n", node, (ctree_data(node)->tiles));
+}
+
+
 client_t *ctree_client(ctree_t *node)
 {
-	return (((container_t*)(node->data))->client);
+	return ctree_data(node)->client;
 }
 
 bool ctree_is_client(ctree_t *node)
 {
-	return (((container_t*)(node->data))->type == CONTAINER_CLIENT);
+	return (ctree_data(node)->type == CONTAINER_CLIENT);
 }
 
 ctree_t* ctree_new_client(client_t *client)
 {
 	ctree_t *tmp;
 	container_t *cont;
-	if ((cont = container_new()) == NULL)
+	if ((cont = container_new_client(client)) == NULL)
 		return NULL;
-
-	cont->type = CONTAINER_CLIENT;
-	cont->client = client;
-
 	tmp = tree_new(NULL, NULL, NULL, NULL, cont);
 	return tmp;
 }
 
 bool ctree_is_tiling(ctree_t *node)
 {
-	return ((container_t*)(node->data))->type == CONTAINER_TILING;
+	assert(node != NULL);
+
+	return (ctree_data(node)->type == CONTAINER_TILING);
 }
 
-ctree_t* ctree_new_tiling(tiling_mode_t tile)
+uint16_t ctree_get_tiles(ctree_t *node)
+{
+	return ctree_data(node)->tiles;
+}
+
+tiling_t ctree_tiling(ctree_t *node)
+{
+	assert(node != NULL);
+	return ctree_data(node)->tile;
+
+}
+
+void ctree_set_tiling(ctree_t *node, tiling_t tiling)
+{
+	ctree_data(node)->tile = tiling;
+}
+
+tiling_t ctree_parent_tiling(ctree_t *node)
+{
+	assert(node != NULL);
+	assert(node->parent != NULL);
+
+	return ctree_data(node->parent)->tile;
+}
+
+ctree_t* ctree_new_tiling(tiling_t tile)
 {
 	ctree_t *tmp;
 	container_t *cont;
-	if ((cont = container_new()) == NULL)
+	if ((cont = container_new_tiling(tile)) == NULL)
 		return NULL;
 	cont->type = CONTAINER_TILING;
 	cont->tile = tile;
@@ -106,6 +164,9 @@ void ctree_remove(ctree_t *node)
 		node->next = NULL;
 		node->prev = NULL;
 	}
+
+	if (ctree_is_tiling(node->parent))
+		ctree_minus(node->parent);
 	node->parent = NULL;
 }
 
@@ -126,7 +187,7 @@ int ctree_count_children(ctree_t* parent)
 	return n;
 }
 
-/* add _add_ after _current_ node */
+/* add _node_ after _current_ node */
 void ctree_add_sibling(ctree_t *current, ctree_t *node)
 {
 	if (current->next == NULL) {
@@ -141,6 +202,22 @@ void ctree_add_sibling(ctree_t *current, ctree_t *node)
 		node->prev->next = node;
 		node->next->prev = node;
 	}
+	node->parent = current->parent;
+	ctree_plus(node->parent);
+}
+
+/* add tiling-node as sibling to current and client-node as child to tiling-node
+ * current -> tiling-node (tmp) -> client-node (node) */
+void ctree_add_tile_sibling(ctree_t *current, ctree_t *node,
+		tiling_t tiling)
+{
+	ctree_t *tmp = ctree_new_tiling(tiling);
+
+	tmp->child = node;  // add child to tiler
+	node->parent = tmp; // make tiler parent to child
+	ctree_plus(tmp);    // increment child count of new tiler
+
+	ctree_add_sibling(current, tmp);
 }
 
 void ctree_append_sibling(ctree_t *current, ctree_t *node)
@@ -150,6 +227,8 @@ void ctree_append_sibling(ctree_t *current, ctree_t *node)
 
 	current->next = node;
 	node->prev = current->next;
+	node->parent = current->parent;
+	ctree_plus(node->parent);
 }
 
 void ctree_append_child(ctree_t *parent, ctree_t *node)
@@ -162,8 +241,34 @@ void ctree_append_child(ctree_t *parent, ctree_t *node)
 		ctree_append_sibling(parent->child, node);
 
 	node->parent = parent;
+	ctree_plus(node->parent);
 }
 
+
+void ctree_foreach_sibling(ctree_t *node, void(*action)(client_t *))
+{
+	while (node != NULL) {
+		action(ctree_client(node));
+		node = node->next;
+	}
+}
+
+/* pre-order */
+#if 0
+void ctree_traverse_clients_p(ctree_t *node, void(*action)(client_t *), void *arg)
+{
+	if (node == NULL)
+		return;
+
+	if (ctree_is_client(node))
+		action(ctree_client(node), arg);
+
+	if (node->next != NULL)
+		ctree_traverse_clients(node->next, action);
+	if (node->child != NULL)
+		ctree_traverse_clients(node->child, action);
+}
+#endif
 
 /* pre-order */
 void ctree_traverse_clients(ctree_t *node, void(*action)(client_t *))
@@ -194,7 +299,6 @@ client_t *ctree_find_client(ctree_t *node, bool(*compare)(client_t*, void *), vo
 	client_t *client;
 	if ((client = ctree_find_client(node->next, compare, arg)))
 		return client;
-
 	if ((client = ctree_find_client(node->child, compare, arg)))
 		return client;
 

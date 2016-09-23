@@ -165,7 +165,7 @@ list_t *monlist = NULL;			/* List of all physical monitor outputs. */
 
 wm_mode_t MCWM_mode = mode_nothing;		/* Internal mode, such as move or resize */
 
-tiling_mode_t tiling_mode = DEFAULT_TILING_MODE; /* current tiling mode */
+tiling_t tiling_mode = DEFAULT_TILING_MODE; /* current tiling mode */
 
 /*
  * Workspace list: Every workspace has a list of all visible
@@ -405,11 +405,33 @@ client_t *focuswin(uint32_t ws)
 	return wslist[ws].focuswin;
 }
 
+
+void show_node(char* str, tree_t *node)
+{
+	if (node == NULL)
+		fprintf(stderr, "(%s) node: %p\n", str, NULL);
+	else {
+		fprintf(stderr, "(%s) node: %p\n - parent: %p\n - child: %p\n - prev: %p\n - next: %p\n",
+			str, node, node->parent, node->child, node->prev, node->next);
+	}
+}
+
 void set_focuswin(uint32_t ws, client_t* client)
 {
 	assert(ws < WORKSPACES);
 	wslist[ws].focuswin = client;
 }
+
+void adjust_container(tree_t *node)
+{
+	int n = ctree_count_children(node);
+}
+
+void adjust_windows(uint32_t ws)
+{
+	
+}
+
 /**********************************************************************/
 
 // XXX this is just a little precaution and encapsulation
@@ -657,6 +679,54 @@ uint32_t ewmh_get_workspace(xcb_drawable_t win)
 	return ws;
 }
 
+void update_clues(tree_t *node, xcb_rectangle_t rect)
+{
+	if (node == NULL)
+		return;
+
+
+	if (ctree_is_tiling(node)) {
+		xcb_rectangle_t tmp = rect;
+		int tiles = ctree_get_tiles(node);
+
+		fprintf(stderr, "0x%x is tiling with %d clients\n", node, tiles);
+
+		if (tiles > 1) {
+			if (node->prev && node->parent) {
+				if (ctree_tiling(node->parent) == TILING_VERTICAL)
+					tmp.x += rect.width;
+				if (ctree_tiling(node->parent) == TILING_HORIZONTAL)
+					tmp.y += rect.height;
+			}
+
+			if (ctree_tiling(node) == TILING_VERTICAL)
+				tmp.width /= tiles;
+			if (ctree_tiling(node) == TILING_HORIZONTAL)
+				tmp.height /= tiles;
+		}
+		// jump to the clients
+		update_clues(node->child, tmp);
+	}
+
+	// root node
+	if (node->parent == NULL)
+		return;
+
+	if (node->prev) {
+		if (ctree_tiling(node->parent) == TILING_VERTICAL)
+			rect.x += rect.width;
+		if (ctree_tiling(node->parent) == TILING_HORIZONTAL)
+			rect.y += rect.height;
+	}
+	update_clues(node->next, rect);
+
+	if (ctree_is_client(node)) {
+		show_node("update", node);
+		fprintf(stderr, "tiling: %d,%d,%d,%d\n", rect.x, rect.y, rect.width, rect.height);
+		update_geometry((client_t*)ctree_client(node), &rect);
+	}
+}
+
 /*
  * set client to one or no workspace
  */
@@ -672,23 +742,67 @@ void set_workspace(client_t *client, uint32_t ws)
 
 	/* Is it currently on any workspace */
 	if (client->ws != WORKSPACE_NONE) {
-		ctree_remove(client->wsitem);
+//		ctree_remove(client->wsitem); // XXX tiling
 		if (focuswin(client->ws) == client)
 			set_focuswin(client->ws, NULL);
 	}
 	client->ws = ws;
 
-	/* new workspace */
+	/* new workspace to be added to */
 	if (ws != WORKSPACE_NONE) {
-	   	if (focuswin(ws)) {
-			/* add after focuswin */
-			ctree_add_sibling(focuswin(ws)->wsitem, client->wsitem);
+		/* Is there a focused window we can add to ? */
+	   	if (! focuswin(ws)) {
+			PDEBUG(">   sw| no focuswin\n");
+			/* No, attach to root */
+			if (wslist[ws].root->child == NULL) {
+				PDEBUG(">>  sw| no root child\n");
+				/* root has no children, add appropriately tiled */
+				if (ctree_tiling(wslist[ws].root) != tiling_mode) {
+					PDEBUG(">>> sw| root child different tiling\n");
+					ctree_set_tiling(wslist[ws].root, tiling_mode);
+				}
+				ctree_append_child(wslist[ws].root, client->wsitem);
+			} else {
+				PDEBUG(">>  sw| root child\n");
+				/* there is a child on root, just add sibling */
+				if (ctree_tiling(wslist[ws].root) != tiling_mode) {
+					PDEBUG(">>> sw| root child different tiling\n");
+					/* different orientation */
+					ctree_add_tile_sibling(wslist[ws].root->child, client->wsitem, tiling_mode);
+				} else {
+					PDEBUG(">>> sw| root child same tiling\n");
+					ctree_add_sibling(wslist[ws].root->child, client->wsitem);
+				}
+			}
 		} else {
-			/* add child of root */
-			ctree_append_child(wslist[ws].root, client->wsitem);
+			PDEBUG(">   sw| focuswin\n");
+			/* We have a window to attach to */
+			/* XXX tiling: focuswin does not always have parent ??? */
+
+			if (ctree_parent_tiling(focuswin(ws)->wsitem) != tiling_mode) {
+				PDEBUG(">>  sw| focuswin different tiling\n");
+				/* New tiling mode, add another tiling container */
+				show_node("focuswin: ", focuswin(ws)->wsitem);
+				show_node("my node : ", client->wsitem);
+				ctree_add_tile_sibling(focuswin(ws)->wsitem,
+						client->wsitem, tiling_mode);
+			} else {
+				PDEBUG(">>  sw| focuswin same tiling\n");
+				/* add after focuswin */
+				ctree_add_sibling(focuswin(ws)->wsitem, client->wsitem);
+			}
 		}
 		/* Set _NET_WM_DESKTOP accordingly or leave it  */
 		xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
+
+		// fixup geometries
+		xcb_rectangle_t xx;
+		xx.x = xx.y = 0;
+		xx.height = screen->height_in_pixels;
+		xx.width = screen->width_in_pixels;
+
+		update_clues(wslist[ws].root, xx);
+		xcb_flush(conn);
 	}
 }
 
@@ -773,6 +887,15 @@ int update_geometry(client_t *client,
 	xcb_rectangle_t monitor;
 	xcb_rectangle_t geo;
 
+
+	if (geometry)
+		geo = *geometry;
+	else
+		geo = client->geometry;
+	goto out;
+
+	// XXX tiling
+	//
 	const xcb_size_hints_t *hints = &client->hints;
 	const int border = client->fullscreen ? 0 : conf.borderwidth;
 
@@ -947,13 +1070,12 @@ void new_win(xcb_window_t win)
 	 * for the window we map it where our pointer is instead.
 	 * Or to the center of the monitor out pointer is on.
 	 */
-	if (client->usercoord) {
 #if 0
+	if (client->usercoord) {
 		/* hints.x,y are obsolete and often not used, in that case just use
 		 x,y given in initialization */
 		geometry.x = client->hints.x;
 		geometry.y = client->hints.y;
-#endif
 		PDEBUG("User set coordinates: %d,%d\n", geometry.x, geometry.y);
 	} else {
 		int16_t pointx;
@@ -973,6 +1095,7 @@ void new_win(xcb_window_t win)
 
 	/* Find the physical output this window will be on if RANDR
 	   is active. */
+#endif
 	if (-1 != randrbase) {
 		client->monitor = find_monitor_at(geometry.x, geometry.y);
 		if (! client->monitor) {
@@ -984,9 +1107,10 @@ void new_win(xcb_window_t win)
 		}
 	}
 
+#if 0
 	apply_gravity(client, &geometry);
 	update_geometry(client, &geometry);
-
+#endif
 	/* Show window on screen. */
 	set_default_events(client);
 	show(client);
@@ -1907,6 +2031,61 @@ void unset_focus()
  * Returns client pointer or NULL if not found.
  */
 
+#if 0
+
+typedef struct xy {
+	uint32_t x;
+	uint32_t y;
+} xydata;
+
+void update_size_helper(client_t *client, void *arg)
+{
+	xydata *xy = (xydata*)arg;
+	switch (((container_t*)client->wsitem->data)->type) {
+		case CONTAINER_TILING:
+			uint16_t divider = ((container_t*)client->wsitem->data)->tiles + 1;
+			((container_t*)client->wsitem->data)->x_scale = xy->x / divider;
+			((container_t*)client->wsitem->data)->y_scale = xy->y / divider;
+			break;
+		case CONTAINER_CLIENT:
+			uint16_t divider = ((container_t*)client->wsitem->parent->data)->tiles + 1;
+			client->geometry.width = xy->x / divider;
+			client->geometry.height = xy->y / divider;
+	}
+}
+
+void update_pos_helper(client_t *client, void *arg)
+{
+	xydata *xy = (xydata*)arg;
+	if (ctree_is_tiling(client->wsitem)) {
+		uint16_t tiles = ((container_t*)client->wsitem->data)->tiles;
+			if (tiles > 1) {
+				xy->x /= tiles;
+				xy->y /= tiles;
+			}
+			((container_t*)client->wsitem->data)->x_scale = xy->x;
+			((container_t*)client->wsitem->data)->y_scale = xy->y;
+
+			ctree_t *node = client->wsitem->child;
+			uint16_t x, y;
+			x = y = 0;
+			while (node != NULL) {
+				((container_t*)(node->data))->client
+				
+
+			}
+	}
+		case CONTAINER_CLIENT:
+			uint16_t divider = ((container_t*)client->wsitem->parent->data)->tiles + 1;
+			client->geometry.width = xy->x / divider;
+			client->geometry.height = xy->y / divider;
+	}
+
+}
+
+#endif
+
+
 
 bool find_client_helper(client_t *client, void *arg)
 {
@@ -1957,7 +2136,7 @@ client_t *find_clientp(xcb_drawable_t win)
 }
 
 /*
- * Find client with client->id win in global window list.
+ * Find client with client->id win in global window tree.
  *
  * Returns client pointer or NULL if not found.
  */
@@ -2286,6 +2465,9 @@ void toggle_fullscreen(client_t *client)
 {
 	if (! client)
 	   return;
+
+	client->fullscreen = false;
+	return;
 
 	xcb_rectangle_t monitor;
 	get_monitor_geometry(client->monitor, &monitor);

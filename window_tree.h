@@ -109,11 +109,16 @@ void wtree_free(wtree_t *node);
 /* unlink node from tree, no children handling */
 void wtree_remove(wtree_t *node);
 
+/* print tree */
+void wtree_print_tree(wtree_t *cur);
+
 /* count children of parent */
 int wtree_count_children(wtree_t* parent);
 
 /* add _add_ after _current_ node */
 void wtree_add_sibling(wtree_t *current, wtree_t *node);
+
+void wtree_inter_tile(wtree_t *client, tiling_t mode);
 void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
 		tiling_t tiling);
 void wtree_append_sibling(wtree_t *current, wtree_t *node);

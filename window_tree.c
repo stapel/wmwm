@@ -138,136 +138,114 @@ void wtree_free(wtree_t *node)
 void wtree_remove(wtree_t *node)
 {
 	assert(node != NULL);
+	tree_t *parent = tree_parent(node);
 
-	if (node->prev == NULL && node->next == NULL) {
-		/* no siblings, remove from parent */
-		if (node->parent == NULL)
-			return;
-		assert(node->parent->child == node);
-		node->parent->child = NULL;
-	} else {
-		if (node->prev && node->next) {
-			/* next and prev */
-			node->prev->next = node->next;
-			node->next->prev = node->prev;
-		} else {
-			/* only one direct sibling */
-			if (node->prev)
-				node->prev->next = NULL;
-			else {
-				node->next->prev = NULL;
-				/* next sibling is now head child */
-				node->parent->child = node->next;
-			}
+	// extract node from tree
+	tree_extract(node);
+
+	// update parent node
+	if (parent && wtree_is_tiling(parent)) {
+		// decrement child counter
+		wtree_minus(parent);
+		// in case of non-root-parent tile, remove it
+		if (tree_child(parent) == NULL && tree_parent(parent)) {
+			wtree_remove(parent);
+			wtree_free(parent);
 		}
-		/* finally set own sibling ptrs */
-		node->next = NULL;
-		node->prev = NULL;
 	}
-
-	if (wtree_is_tiling(node->parent)) {
-		wtree_minus(node->parent);
-		// remove parent-tiler if empty and not root
-		if (node->parent->child == NULL && node->parent->parent)
-			wtree_remove(node->parent);
-	}
-	node->parent = NULL;
 }
 
-
-//void wtree_set_child(tree_t *current, containter_t *
-
-int wtree_count_children(wtree_t* parent)
+void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 {
-	assert(parent != NULL);
+	if (cur == NULL)
+		return;
 
-	wtree_t *child = parent->child;
-	int n = 0;
+	char *num = calloc(10, 1);
 
-	while (child != NULL) {
-		child = child->next;
-		++n;
+	if (wtree_is_tiling(cur)) {
+		if (wtree_tiling(cur) == TILING_VERTICAL)
+			snprintf(num, 10, "V%02d\0", *i);
+		else
+			snprintf(num, 10, "H%02d\0", *i);
+		fprintf(file, "%lu [label=\"%s\" shape=triangle];\n", cur, num);
+	} else {
+		snprintf(num, 10, "%02d\0", *i);
+		fprintf(file, "%lu [label=\"%s\" shape=circle];\n", cur, num);
 	}
-	return n;
+
+	if (cur->parent) {
+		fprintf(file, "%lu:n -> %lu:s;\n", cur, cur->parent);
+	}
+	if (cur->next) {
+		fprintf(file, "%lu:e -> %lu:w;\n", cur, cur->next);
+		fprintf(file, "{ rank = same; %lu ; %lu }\n;", cur, cur->next);
+	}
+	if (cur->prev) {
+		fprintf(file, "%lu:w -> %lu:e;\n", cur, cur->prev);
+	}
+	if (cur->child) {
+		fprintf(file, "%lu:s -> %lu:n;\n", cur, cur->child);
+	}
+	free(num);
+
+	if (cur->next) {
+		++(*i);
+		wtree_print_tree_r(file, cur->next, i);
+	}
+	if (cur->child) {
+		++(*i);
+		wtree_print_tree_r(file, cur->child, i);
+	}
+
+}
+
+void wtree_print_tree(wtree_t *cur)
+{
+
+	FILE *file = fopen("/tmp/graph.dot", "w");
+	int i = 0;
+
+	fprintf(file, "digraph G {\nnodesep=1.2;\n");
+	wtree_print_tree_r(file, cur, &i);
+
+	fprintf(file, "}\n");
+	fsync(file);
+	fclose(file);
 }
 
 /* add _node_ after _current_ node */
 void wtree_add_sibling(wtree_t *current, wtree_t *node)
 {
-	if (current->next == NULL) {
-		/* set next-link on current node */
-		current->next = node;
-		node->prev = current;
-	} else {
-		/* set links on new node */
-		node->prev = current;
-		node->next = current->next;
-		/* update original nodes */
-		node->prev->next = node;
-		node->next->prev = node;
-	}
-	node->parent = current->parent;
+	tree_add(current, node);
 	wtree_plus(node->parent);
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((current->next != current->prev) || current->next == NULL);
 }
 
+// interject tiler between client and client->parent
 /* replace current client-node with tiler, add cl-node to that */
-void wtree_replace_tile(wtree_t *tiler, wtree_t *client)
+void wtree_inter_tile(wtree_t *client, tiling_t mode)
 {
-	assert(tiler != client);
-	assert(tiler->child != client);
+	wtree_t *tiler = wtree_new_tiling(mode);
 
-	PDEBUG("0x%x - 0x%x\n", tiler->next, tiler->prev);
-	show_node("replace tiler :", tiler);
-	show_node("replace client:", client);
-	assert((tiler->next != tiler->prev) || tiler->next == NULL);
-	assert((client->next != client->prev) || tiler->next == NULL);
-
-	tiler->parent = client->parent;
-	// check if parent knows us
-	if (client->parent->child == client)
-		client->parent->child = tiler;
-	// update siblings
-	if (client->prev)
-		client->prev->next = tiler;
-	if (client->next)
-		client->next->prev = tiler;
-
-	// copy sibling positions
-	tiler->prev = client->prev;
-	tiler->next = client->next;
-	// unlink client from siblings
-	client->next = client->prev = NULL;
-	// add client as child
-	PDEBUG("0x%x - 0x%x\n", tiler, client);
-	show_node("replace rb tiler :", tiler);
-	show_node("replace rb client:", client);
+	// replace client with tiler
+	tree_replace(client, tiler);
+	// add client to tiler
 	wtree_append_child(tiler, client);
 
-	assert((tiler->next != tiler->prev) || tiler->next == NULL);
-	assert((client->next != client->prev) || tiler->next == NULL);
+	PDEBUG("0x%x - 0x%x\n", tiler, client);
 }
 
 /* add tiling-node as sibling to current and client-node as child to tiling-node
  * current -> tiling-node (tmp) -> client-node (node) */
+
 void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
 		tiling_t tiling)
 {
-	wtree_t *tmp = wtree_new_tiling(tiling);
-
-	tmp->child = node;  // add child to tiler
-	node->parent = tmp; // make tiler parent to child
-	wtree_plus(tmp);    // increment child count of new tiler
-
-	wtree_add_sibling(current, tmp);
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((current->next != current->prev) || current->next == NULL);
-	assert((tmp->next != tmp->prev) || tmp->next == NULL);
+	wtree_t *tiler = wtree_new_tiling(tiling);
+	// add node to tiler
+	wtree_append_child(tiler, node);
+	// add tiler as sibling to current
+	wtree_add_sibling(current, tiler);
 }
-
-
 
 void tree_show_node(char* str, tree_t *node)
 {
@@ -289,17 +267,8 @@ void wtree_append_sibling(wtree_t *current, wtree_t *node)
 	while (current->next != NULL)
 		current = current->next;
 
-	tree_show_node("#node#b", node);
-	tree_show_node("#cur #b", current);
-	// XXX tiling: zero other vars (node->next?)
-	node->next = NULL;
-	current->next = node;
-	node->prev = current;
-	node->parent = current->parent;
+	tree_add(current, node);
 	wtree_plus(node->parent);
-
-	tree_show_node("#node#a", node);
-	tree_show_node("#cur #a", current);
 
 	assert((node->next != node->prev) || node->next == NULL);
 	assert((current->next != current->prev) || current->next == NULL);
@@ -309,8 +278,6 @@ void wtree_append_child(wtree_t *parent, wtree_t *node)
 {
 	assert(wtree_is_tiling(parent));
 
-	tree_show_node("#node#b", node);
-	tree_show_node("#par #b", parent);
 	// other vars
 	// XXX: Make sure no struct-member is forgotten
 	if (parent->child == NULL) {

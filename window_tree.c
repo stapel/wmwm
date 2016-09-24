@@ -3,6 +3,8 @@
 #include <assert.h>
 
 #include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 
 #ifdef DEBUG
@@ -14,6 +16,8 @@
 #define D(x)
 #endif
 
+
+// container helper functions, local only
 static container_t* container_new()
 {
 	container_t *tmp = calloc(1, sizeof(container_t));
@@ -60,17 +64,10 @@ static void wtree_minus(wtree_t *node)
 	PDEBUG("node-: %p (%d)\n", node, (wtree_data(node)->tiles));
 }
 
+/***************************************************************/
+// memory handling functions
 
-client_t *wtree_client(wtree_t *node)
-{
-	return wtree_data(node)->client;
-}
-
-bool wtree_is_client(wtree_t *node)
-{
-	return (wtree_data(node)->type == CONTAINER_CLIENT);
-}
-
+// client constructor
 wtree_t* wtree_new_client(client_t *client)
 {
 	wtree_t *tmp;
@@ -81,38 +78,7 @@ wtree_t* wtree_new_client(client_t *client)
 	return tmp;
 }
 
-bool wtree_is_tiling(wtree_t *node)
-{
-	assert(node != NULL);
-
-	return (wtree_data(node)->type == CONTAINER_TILING);
-}
-
-uint16_t wtree_get_tiles(wtree_t *node)
-{
-	return wtree_data(node)->tiles;
-}
-
-tiling_t wtree_tiling(wtree_t *node)
-{
-	assert(node != NULL);
-	return wtree_data(node)->tile;
-
-}
-
-void wtree_set_tiling(wtree_t *node, tiling_t tiling)
-{
-	wtree_data(node)->tile = tiling;
-}
-
-tiling_t wtree_parent_tiling(wtree_t *node)
-{
-	assert(node != NULL);
-	assert(node->parent != NULL);
-
-	return wtree_data(node->parent)->tile;
-}
-
+// tiling node constructor
 wtree_t* wtree_new_tiling(tiling_t tile)
 {
 	wtree_t *tmp;
@@ -125,6 +91,7 @@ wtree_t* wtree_new_tiling(tiling_t tile)
 	return tmp;
 }
 
+// deconstructor, free node and its data
 void wtree_free(wtree_t *node)
 {
 	assert(node != NULL);
@@ -134,90 +101,101 @@ void wtree_free(wtree_t *node)
 	free(node);
 }
 
-/* unlink node from tree, no children handling */
-void wtree_remove(wtree_t *node)
+/*******************************************************/
+// container handling functions
+
+// return client of node
+client_t *wtree_client(wtree_t *node)
+{
+	return wtree_data(node)->client;
+}
+
+// is node a client node
+bool wtree_is_client(wtree_t *node)
 {
 	assert(node != NULL);
-	tree_t *parent = tree_parent(node);
-
-	// extract node from tree
-	tree_extract(node);
-
-	// update parent node
-	if (parent && wtree_is_tiling(parent)) {
-		// decrement child counter
-		wtree_minus(parent);
-		// in case of non-root-parent tile, remove it
-		if (tree_child(parent) == NULL && tree_parent(parent)) {
-			wtree_remove(parent);
-			wtree_free(parent);
-		}
-	}
+	return (wtree_data(node)->type == CONTAINER_CLIENT);
 }
 
-void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
+// is node a tiling node
+bool wtree_is_tiling(wtree_t *node)
 {
-	if (cur == NULL)
-		return;
-
-	char *num = calloc(10, 1);
-
-	if (wtree_is_tiling(cur)) {
-		if (wtree_tiling(cur) == TILING_VERTICAL)
-			snprintf(num, 10, "V%02d\0", *i);
-		else
-			snprintf(num, 10, "H%02d\0", *i);
-		fprintf(file, "%lu [label=\"%s\" shape=triangle];\n", cur, num);
-	} else {
-		snprintf(num, 10, "%02d\0", *i);
-		fprintf(file, "%lu [label=\"%s\" shape=circle];\n", cur, num);
-	}
-
-	if (cur->parent) {
-		fprintf(file, "%lu:n -> %lu:s;\n", cur, cur->parent);
-	}
-	if (cur->next) {
-		fprintf(file, "%lu:e -> %lu:w;\n", cur, cur->next);
-		fprintf(file, "{ rank = same; %lu ; %lu }\n;", cur, cur->next);
-	}
-	if (cur->prev) {
-		fprintf(file, "%lu:w -> %lu:e;\n", cur, cur->prev);
-	}
-	if (cur->child) {
-		fprintf(file, "%lu:s -> %lu:n;\n", cur, cur->child);
-	}
-	free(num);
-
-	if (cur->next) {
-		++(*i);
-		wtree_print_tree_r(file, cur->next, i);
-	}
-	if (cur->child) {
-		++(*i);
-		wtree_print_tree_r(file, cur->child, i);
-	}
-
+	assert(node != NULL);
+	return (wtree_data(node)->type == CONTAINER_TILING);
 }
 
-void wtree_print_tree(wtree_t *cur)
+// return number of children
+uint16_t wtree_get_tiles(wtree_t *node)
 {
-
-	FILE *file = fopen("/tmp/graph.dot", "w");
-	int i = 0;
-
-	fprintf(file, "digraph G {\nnodesep=1.2;\n");
-	wtree_print_tree_r(file, cur, &i);
-
-	fprintf(file, "}\n");
-	fsync(file);
-	fclose(file);
+	return wtree_data(node)->tiles;
 }
 
-/* add _node_ after _current_ node */
+// return mode of tiling
+tiling_t wtree_tiling(wtree_t *node)
+{
+	assert(node != NULL);
+	return wtree_data(node)->tile;
+
+}
+
+// tiling of parent
+tiling_t wtree_parent_tiling(wtree_t *node)
+{
+	assert(node != NULL);
+	assert(node->parent != NULL);
+
+	return wtree_data(node->parent)->tile;
+}
+
+// set tiling mode
+void wtree_set_tiling(wtree_t *node, tiling_t tiling)
+{
+	wtree_data(node)->tile = tiling;
+}
+
+/*************************************************************/
+// node action functions
+
+// add _node_ after _current_ node
 void wtree_add_sibling(wtree_t *current, wtree_t *node)
 {
 	tree_add(current, node);
 	wtree_plus(node->parent);
+}
+
+// append sibling node to current
+void wtree_append_sibling(wtree_t *current, wtree_t *node)
+{
+
+	assert((node->next != node->prev) || node->next == NULL);
+	assert((current->next != current->prev) || current->next == NULL);
+
+	while (current->next != NULL)
+		current = current->next;
+
+	tree_add(current, node);
+	wtree_plus(node->parent);
+
+	assert((node->next != node->prev) || node->next == NULL);
+	assert((current->next != current->prev) || current->next == NULL);
+}
+
+// append child node to parent
+void wtree_append_child(wtree_t *parent, wtree_t *node)
+{
+	assert(wtree_is_tiling(parent));
+
+	// other vars
+	// XXX: Make sure no struct-member is forgotten
+	if (parent->child == NULL) {
+		parent->child = node;
+		wtree_plus(parent);
+	} else
+		wtree_append_sibling(parent->child, node);
+	node->parent = parent;
+
+	assert((node->next != node->prev) || node->next == NULL);
+	assert((parent->next != parent->prev) || parent->next == NULL);
 }
 
 // interject tiler between client and client->parent
@@ -247,6 +225,28 @@ void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
 	wtree_add_sibling(current, tiler);
 }
 
+/* unlink node from tree, no children handling */
+void wtree_remove(wtree_t *node)
+{
+	assert(node != NULL);
+	tree_t *parent = tree_parent(node);
+
+	// extract node from tree
+	tree_extract(node);
+
+	// update parent node
+	if (parent && wtree_is_tiling(parent)) {
+		// decrement child counter
+		wtree_minus(parent);
+		// in case of non-root-parent tile, remove it
+		if (tree_child(parent) == NULL && tree_parent(parent)) {
+			wtree_remove(parent);
+			wtree_free(parent);
+		}
+	}
+}
+
+#if 0
 void tree_show_node(char* str, tree_t *node)
 {
 	if (node == NULL)
@@ -256,68 +256,27 @@ void tree_show_node(char* str, tree_t *node)
 			str, node, node->parent, node->child, node->prev, node->next);
 	}
 }
+#endif
 
-
-void wtree_append_sibling(wtree_t *current, wtree_t *node)
-{
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((current->next != current->prev) || current->next == NULL);
-
-	while (current->next != NULL)
-		current = current->next;
-
-	tree_add(current, node);
-	wtree_plus(node->parent);
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((current->next != current->prev) || current->next == NULL);
-}
-
-void wtree_append_child(wtree_t *parent, wtree_t *node)
-{
-	assert(wtree_is_tiling(parent));
-
-	// other vars
-	// XXX: Make sure no struct-member is forgotten
-	if (parent->child == NULL) {
-		parent->child = node;
-		wtree_plus(parent);
-	} else
-		wtree_append_sibling(parent->child, node);
-	node->parent = parent;
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((parent->next != parent->prev) || parent->next == NULL);
-}
-
-
-void wtree_foreach_sibling(wtree_t *node, void(*action)(client_t *))
-{
-	while (node != NULL) {
-		action(wtree_client(node));
-		node = node->next;
-	}
-}
-
-/* pre-order */
 #if 0
-void wtree_traverse_clients_p(wtree_t *node, void(*action)(client_t *), void *arg)
+wtree_t *wtree_next(wtree_t *node)
 {
-	if (node == NULL)
-		return;
+	// allways tiling
+	if (node->child)
+		return (wtree_next(node->child));
 
-	if (wtree_is_client(node))
-		action(wtree_client(node), arg);
-
-	if (node->next != NULL)
-		wtree_traverse_clients(node->next, action);
-	if (node->child != NULL)
-		wtree_traverse_clients(node->child, action);
+	if (node->next) {
+		if(wtree_is_tiling(node->next))
+			return (wtree_next(node->next));
+		if (wtree_is_client(node->next))
+			return node->next;
+	}
+	return node;
 }
 #endif
 
-/* pre-order */
+// recursive general function to apply _action_ on each client beneath client
+// *pre-order*
 void wtree_traverse_clients(wtree_t *node, void(*action)(client_t *))
 {
 	if (node == NULL)
@@ -334,7 +293,7 @@ void wtree_traverse_clients(wtree_t *node, void(*action)(client_t *))
 		wtree_traverse_clients(node->child, action);
 }
 
-
+// recursive function to search for a client_t that fulfils _compare_
 /* pre-order */
 client_t *wtree_find_client(wtree_t *node, bool(*compare)(client_t*, void *), void *arg)
 {
@@ -353,3 +312,73 @@ client_t *wtree_find_client(wtree_t *node, bool(*compare)(client_t*, void *), vo
 
 	return NULL;
 }
+
+/*******************************************************/
+// recursive helper function to print tree
+static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
+{
+	if (cur == NULL)
+		return;
+
+	char *num = calloc(10, 1);
+
+	if (wtree_is_tiling(cur)) {
+		if (wtree_tiling(cur) == TILING_VERTICAL)
+			snprintf(num, 10, "V%d", *i);
+		else
+			snprintf(num, 10, "H%d", *i);
+
+		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=triangle];\n",
+				(uintptr_t)cur, num);
+	} else {
+		snprintf(num, 10, "%d", *i);
+		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=circle];\n",
+			   	(uintptr_t)cur, num);
+	}
+
+	if (cur->parent) {
+		fprintf(file, "%"PRIuPTR":n -> %"PRIuPTR":s;\n",
+				(uintptr_t)cur, (uintptr_t)cur->parent);
+	}
+	if (cur->next) {
+		fprintf(file, "%"PRIuPTR":e -> %"PRIuPTR":w;\n",
+				(uintptr_t)cur, (uintptr_t)cur->next);
+		fprintf(file, "{ rank = same; %"PRIuPTR" ; %"PRIuPTR" }\n;",
+				(uintptr_t)cur, (uintptr_t)cur->next);
+	}
+	if (cur->prev) {
+		fprintf(file, "%"PRIuPTR" -> %"PRIuPTR":e;\n",
+				(uintptr_t)cur, (uintptr_t)cur->prev);
+	}
+	if (cur->child) {
+		fprintf(file, "%"PRIuPTR":s -> %"PRIuPTR":n;\n",
+				(uintptr_t)cur, (uintptr_t)cur->child);
+	}
+	free(num);
+
+	if (cur->next) {
+		++(*i);
+		wtree_print_tree_r(file, cur->next, i);
+	}
+	if (cur->child) {
+		++(*i);
+		wtree_print_tree_r(file, cur->child, i);
+	}
+}
+
+// print tree
+void wtree_print_tree(wtree_t *cur)
+{
+
+	FILE *file = fopen("/tmp/graph.dot", "w");
+	int i = 0;
+
+	fprintf(file, "digraph G {\nnodesep=1.2;\n");
+
+	wtree_print_tree_r(file, cur, &i);
+
+	fprintf(file, "}\n");
+	fclose(file);
+}
+
+

@@ -75,7 +75,7 @@ typedef struct container {
 
    if mode == floating
    - MUST HAVE client-wtree-node child
-   - MUST HAVE a parent
+   - MUST HAVE a parent (except root)
 
    if mode == tiling
    - MUST HAVE children
@@ -85,49 +85,38 @@ typedef struct container {
 */
 
 
-uint16_t wtree_get_tiles(wtree_t *node);
+
+/* create new node with client/tiling "container" */
+wtree_t* wtree_new_client(client_t *client);
+wtree_t* wtree_new_tiling(tiling_t tile);
+/* free node and its data */
+void wtree_free(wtree_t *node);
+
+
 client_t *wtree_client(wtree_t *node);
 
 bool wtree_is_client(wtree_t *node);
 bool wtree_is_tiling(wtree_t *node);
 
-/* create new node with client/tiling "container" */
-wtree_t* wtree_new_client(client_t *client);
-wtree_t* wtree_new_tiling(tiling_t tile);
-void wtree_replace_tile(wtree_t *tiler, wtree_t *client);
 
-
+uint16_t wtree_get_tiles(wtree_t *node);
 tiling_t wtree_tiling(wtree_t *node);
 tiling_t wtree_parent_tiling(wtree_t *node);
-
 void wtree_set_tiling(wtree_t *node, tiling_t tiling);
 
-
-/* free node and its data */
-void wtree_free(wtree_t *node);
-
-/* unlink node from tree, no children handling */
+void wtree_add_sibling(wtree_t *current, wtree_t *node);
+void wtree_append_sibling(wtree_t *current, wtree_t *node);
+void wtree_append_child(wtree_t *parent, wtree_t *node);
+void wtree_inter_tile(wtree_t *client, tiling_t mode);
+void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
+		tiling_t tiling);
 void wtree_remove(wtree_t *node);
+
+void wtree_traverse_clients(wtree_t *node, void(*action)(client_t *));
+client_t *wtree_find_client(wtree_t *node, bool(*compare)(client_t*, void *), void *arg);
 
 /* print tree */
 void wtree_print_tree(wtree_t *cur);
 
-/* count children of parent */
-int wtree_count_children(wtree_t* parent);
-
-/* add _add_ after _current_ node */
-void wtree_add_sibling(wtree_t *current, wtree_t *node);
-
-void wtree_inter_tile(wtree_t *client, tiling_t mode);
-void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
-		tiling_t tiling);
-void wtree_append_sibling(wtree_t *current, wtree_t *node);
-void wtree_append_child(wtree_t *parent, wtree_t *node);
-
-void wtree_traverse_clients(wtree_t *node, void(*action)(client_t *));
-void wtree_traverse_clients_p(wtree_t *node, void(*action)(client_t *), void *arg);
-
-client_t *wtree_find_client(wtree_t *node, bool(*compare)(client_t*, void *), void *arg);
-client_t *wtree_find_first_client(wtree_t *node);
 
 #endif

@@ -53,14 +53,14 @@ static container_t* wtree_data(wtree_t *node)
 static void wtree_plus(wtree_t *node)
 {
 	++(wtree_data(node)->tiles);
-	PDEBUG("node+: %p (%d)\n", node, (wtree_data(node)->tiles));
+	PDEBUG("node+: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
 }
 
 static void wtree_minus(wtree_t *node)
 {
 	assert(wtree_data(node)->tiles != 0);
 	--(wtree_data(node)->tiles);
-	PDEBUG("node-: %p (%d)\n", node, (wtree_data(node)->tiles));
+	PDEBUG("node-: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
 }
 
 /***************************************************************/
@@ -207,8 +207,6 @@ void wtree_inter_tile(wtree_t *client, tiling_t mode)
 	tree_replace(client, tiler);
 	// add client to tiler
 	wtree_append_child(tiler, client);
-
-	PDEBUG("0x%x - 0x%x\n", tiler, client);
 }
 
 /* add tiling-node as sibling to current and client-node as child to tiling-node

@@ -546,7 +546,7 @@ struct modkeycodes get_modkeys(xcb_mod_mask_t modmask)
 					keycodes.len++;
 				}
 			}
-			PDEBUG("Got %d keycodes.\n", keycodes.len);
+			PDEBUG("Got %u keycodes.\n", keycodes.len);
 		}
 	}							/* for mask */
 	destroy(reply);
@@ -829,7 +829,7 @@ void change_workspace(uint32_t ws)
 		return;
 	}
 
-	PDEBUG("Changing from workspace #%d to #%d\n", curws, ws);
+	PDEBUG("Changing from workspace #%u to #%u\n", curws, ws);
 
 	/*
 	 * We lose our focus if the window we focus isn't fixed. An
@@ -1412,7 +1412,7 @@ bool setup_keys(void)
 						keys[i].keycode,
 						XCB_GRAB_MODE_ASYNC,
 						XCB_GRAB_MODE_ASYNC);
-				PDEBUG("Grabbing key (%d, with keycode: %d)\n",
+				PDEBUG("Grabbing key (%u, with keycode: %d)\n",
 					i, keys[i].keycode);
 			default:
 				xcb_grab_key(conn, 1, screen->root,
@@ -1420,7 +1420,7 @@ bool setup_keys(void)
 						keys[i].keycode,
 						XCB_GRAB_MODE_ASYNC,
 						XCB_GRAB_MODE_ASYNC);
-				PDEBUG("Grabbing key (%d, with keycode: %d)\n",
+				PDEBUG("Grabbing key (%u, with keycode: %d)\n",
 					i, keys[i].keycode);
 
 		}
@@ -1771,8 +1771,8 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 			strncpy(name, (char*)xcb_randr_get_output_info_name(output), name_len);
 		}
 		PDEBUG("Name: \"%s\" (len: %d)\n", name, name_len);
-		PDEBUG("id: %d\n", outputs[i]);
-		PDEBUG("Size: %d x %d mm.\n", output->mm_width, output->mm_height);
+		PDEBUG("id: %u\n", outputs[i]);
+		PDEBUG("Size: %u x %u mm.\n", output->mm_width, output->mm_height);
 
 		if (XCB_NONE != output->crtc) {
 			icookie = xcb_randr_get_crtc_info(conn, output->crtc, timestamp);
@@ -1790,7 +1790,7 @@ void get_outputs(xcb_randr_output_t * outputs, int len,
 			clonemon = find_clones(outputs[i], crtc->x, crtc->y);
 			if (clonemon) {
 				PDEBUG
-					("Monitor %s, id %d is a clone of %s, id %d. Skipping.\n",
+					("Monitor %s, id %u is a clone of %s, id %u. Skipping.\n",
 					 name, outputs[i], clonemon->name, clonemon->id);
 				if (name) destroy(name);
 				destroy(crtc);
@@ -1910,7 +1910,7 @@ monitor_t *find_monitor(xcb_randr_output_t id)
 	for (list_t *item = monlist; item; item = item->next) {
 		mon = item->data;
 		if (id == mon->id) {
-			PDEBUG("find_monitor: Found it. Output ID: %d\n", mon->id);
+			PDEBUG("find_monitor: Found it. Output ID: %u\n", mon->id);
 			return mon;
 		}
 	}
@@ -1953,7 +1953,7 @@ monitor_t *find_monitor_at(int16_t x, int16_t y)
 
 		if (x >= mon->x && x <= mon->x + mon->width
 				&& y >= mon->y && y <= mon->y + mon->height) {
-			PDEBUG("find_monitor_at: Found it. Output ID: %d, name %s\n",
+			PDEBUG("find_monitor_at: Found it. Output ID: %u, name %s\n",
 					mon->id, mon->name);
 			return mon;
 		}
@@ -2796,7 +2796,7 @@ void send_configuration(client_t *client)
 
 void send_client_message(xcb_window_t window, xcb_atom_t atom)
 {
-	PDEBUG("send client message %s (%d) to 0x%x\n", get_atomname(atom), atom, window);
+	PDEBUG("send client message %s (%u) to 0x%x\n", get_atomname(atom), atom, window);
 
 	xcb_client_message_event_t ev = {
 		.response_type = XCB_CLIENT_MESSAGE,
@@ -3037,7 +3037,7 @@ void handle_property_notify(xcb_generic_event_t *ev)
 	if (! client)
 		return;
 
-	PDEBUG("0x%x notifies changed atom %s (%d)\n", e->window, get_atomname(e->atom), e->atom);
+	PDEBUG("0x%x notifies changed atom %s (%u)\n", e->window, get_atomname(e->atom), e->atom);
 
 	switch (e->atom) {
 		case XCB_ATOM_WM_HINTS:
@@ -3620,7 +3620,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 
 	client_t *client = find_client(e->window);
 
-	PDEBUG("client_message for 0x%x - %s (%d)\n", e->window, get_atomname(e->type), e->type);
+	PDEBUG("client_message for 0x%x - %s (%u)\n", e->window, get_atomname(e->type), e->type);
 
 	/* Window wants to know of the borders we'd set */
 	if (e->type == ewmh->_NET_REQUEST_FRAME_EXTENTS) {

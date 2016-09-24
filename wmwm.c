@@ -422,16 +422,6 @@ void set_focuswin(uint32_t ws, client_t* client)
 	wslist[ws].focuswin = client;
 }
 
-void adjust_container(tree_t *node)
-{
-	int n = ctree_count_children(node);
-}
-
-void adjust_windows(uint32_t ws)
-{
-
-}
-
 /**********************************************************************/
 
 // XXX this is just a little precaution and encapsulation
@@ -684,6 +674,8 @@ void update_clues(tree_t *node, xcb_rectangle_t rect)
 	if (node == NULL)
 		return;
 
+	// XXX tiling: borderwidth and gap width
+
 	show_node("update 1", node);
 	if (ctree_is_tiling(node)) {
 		xcb_rectangle_t tmp = rect;
@@ -698,7 +690,7 @@ void update_clues(tree_t *node, xcb_rectangle_t rect)
 			if (ctree_tiling(node->parent) == TILING_HORIZONTAL)
 				tmp.y += rect.height;
 		}
-		// fix width of the tiling container
+		// fix width of the tiling container if there's more than one child
 		if (tiles > 1) {
 			if (ctree_tiling(node) == TILING_VERTICAL)
 				tmp.width /= tiles;
@@ -850,7 +842,7 @@ void change_workspace(uint32_t ws)
 
 	curws = ws;
 
-	/* Go through list of new ws. Map everything that isn't fixed. */
+	/* Go through list of new ws and map everything */
 	ctree_traverse_clients(wslist[curws].root, &show);
 
 	/* Re-enable enter events */
@@ -2639,6 +2631,7 @@ void erase_client(client_t *client)
 		destroy(error);
 
 	ctree_free(client->wsitem);
+	destroy(client);
 	ewmh_update_client_list();
 }
 

@@ -1,11 +1,10 @@
 #include "window_tree.h"
-#include <stdlib.h>
-#include <assert.h>
-
-#include <stdio.h>
-#include <stdint.h>
-#include <inttypes.h>
-
+#include <assert.h>    // for assert
+#include <inttypes.h>  // for PRIuPTR
+#include <stdbool.h>   // for bool
+#include <stdint.h>    // for uintptr_t, uint16_t
+#include <stdio.h>     // for NULL, fprintf, snprintf, FILE, fclose, fopen
+#include <stdlib.h>    // for calloc, free
 
 #ifdef DEBUG
 #define PDEBUG(Args...) \

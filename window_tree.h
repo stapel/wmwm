@@ -1,12 +1,12 @@
 #ifndef __WMWM__CONTAINER_TREE_H__
 #define __WMWM__CONTAINER_TREE_H__
 
-#include "stdbool.h"
-#include "tree.h"
+#include <stdint.h>   // for uint16_t
+#include "stdbool.h"  // for bool
+#include "tree.h"     // for tree_t
+#include "wmwm.h"     // for client_t
 
 typedef tree_t wtree_t;
-
-#include "wmwm.h"
 
 /* Tiling modes */
 typedef enum tiling_modes {

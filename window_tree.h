@@ -4,7 +4,7 @@
 #include "stdbool.h"
 #include "tree.h"
 
-typedef tree_t ctree_t;
+typedef tree_t wtree_t;
 
 #include "wmwm.h"
 
@@ -66,15 +66,15 @@ typedef struct container {
 /* Die eigentlich wichtigen Funktionen sollten container-tree sein */
 /****************************************************************/
 
-/* client-ctree-node *****************
+/* client-wtree-node *****************
    - MUST NOT HAVE child
    - MUST HAVE a parent
    - MAY HAVE siblings
 
- * tiling-ctree-node *****************
+ * tiling-wtree-node *****************
 
    if mode == floating
-   - MUST HAVE client-ctree-node child
+   - MUST HAVE client-wtree-node child
    - MUST HAVE a parent
 
    if mode == tiling
@@ -85,44 +85,44 @@ typedef struct container {
 */
 
 
-uint16_t ctree_get_tiles(ctree_t *node);
-client_t *ctree_client(ctree_t *node);
+uint16_t wtree_get_tiles(wtree_t *node);
+client_t *wtree_client(wtree_t *node);
 
-bool ctree_is_client(ctree_t *node);
-bool ctree_is_tiling(ctree_t *node);
+bool wtree_is_client(wtree_t *node);
+bool wtree_is_tiling(wtree_t *node);
 
 /* create new node with client/tiling "container" */
-ctree_t* ctree_new_client(client_t *client);
-ctree_t* ctree_new_tiling(tiling_t tile);
-void ctree_replace_tile(ctree_t *tiler, ctree_t *client);
+wtree_t* wtree_new_client(client_t *client);
+wtree_t* wtree_new_tiling(tiling_t tile);
+void wtree_replace_tile(wtree_t *tiler, wtree_t *client);
 
 
-tiling_t ctree_tiling(ctree_t *node);
-tiling_t ctree_parent_tiling(ctree_t *node);
+tiling_t wtree_tiling(wtree_t *node);
+tiling_t wtree_parent_tiling(wtree_t *node);
 
-void ctree_set_tiling(ctree_t *node, tiling_t tiling);
+void wtree_set_tiling(wtree_t *node, tiling_t tiling);
 
 
 /* free node and its data */
-void ctree_free(ctree_t *node);
+void wtree_free(wtree_t *node);
 
 /* unlink node from tree, no children handling */
-void ctree_remove(ctree_t *node);
+void wtree_remove(wtree_t *node);
 
 /* count children of parent */
-int ctree_count_children(ctree_t* parent);
+int wtree_count_children(wtree_t* parent);
 
 /* add _add_ after _current_ node */
-void ctree_add_sibling(ctree_t *current, ctree_t *node);
-void ctree_add_tile_sibling(ctree_t *current, ctree_t *node,
+void wtree_add_sibling(wtree_t *current, wtree_t *node);
+void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
 		tiling_t tiling);
-void ctree_append_sibling(ctree_t *current, ctree_t *node);
-void ctree_append_child(ctree_t *parent, ctree_t *node);
+void wtree_append_sibling(wtree_t *current, wtree_t *node);
+void wtree_append_child(wtree_t *parent, wtree_t *node);
 
-void ctree_traverse_clients(ctree_t *node, void(*action)(client_t *));
-void ctree_traverse_clients_p(ctree_t *node, void(*action)(client_t *), void *arg);
+void wtree_traverse_clients(wtree_t *node, void(*action)(client_t *));
+void wtree_traverse_clients_p(wtree_t *node, void(*action)(client_t *), void *arg);
 
-client_t *ctree_find_client(ctree_t *node, bool(*compare)(client_t*, void *), void *arg);
-client_t *ctree_find_first_client(ctree_t *node);
+client_t *wtree_find_client(wtree_t *node, bool(*compare)(client_t*, void *), void *arg);
+client_t *wtree_find_first_client(wtree_t *node);
 
 #endif

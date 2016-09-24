@@ -20,7 +20,7 @@ LDFLAGS  = $(EXTRA_LDFLAGS)
 
 ###########################################################
 #SRC=$(wildcard *.c)
-SRC  = wmwm.c hidden.c list.c tree.c container_tree.c
+SRC  = wmwm.c hidden.c list.c tree.c window_tree.c
 OBJ  = $(SRC:%.c=%.o)
 
 wmwmLIBS = "xcb xcb-ewmh xcb-randr xcb-keysyms xcb-icccm xcb-util xcb-shape"
@@ -36,7 +36,7 @@ BINS=wmwm hidden
 
 all: $(OBJ) $(BINS) | Makefile.dep
 
-wmwm: wmwm.o list.o tree.o container_tree.o
+wmwm: wmwm.o list.o tree.o window_tree.o
 hidden: hidden.o
 
 $(BINS):

@@ -864,12 +864,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
 
 		// fixup geometries
-		xcb_rectangle_t xx;
-		xx.x = xx.y = 0;
-		xx.height = screen->height_in_pixels;
-		xx.width = screen->width_in_pixels;
-
-		update_clues(wslist[ws].root, xx);
+		update_clues(wslist[ws].root, screen_rect());
 		wtree_print_tree(wslist[ws].root);
 
 		xcb_flush(conn);
@@ -2702,12 +2697,7 @@ void erase_client(client_t *client)
 	destroy(client);
 	ewmh_update_client_list();
 
-	xcb_rectangle_t xx;
-	xx.x = xx.y = 0;
-	xx.height = screen->height_in_pixels;
-	xx.width = screen->width_in_pixels;
-
-	update_clues(wslist[cws].root, xx);
+	update_clues(wslist[cws].root, screen_rect());
 	wtree_print_tree(wslist[cws].root);
 }
 

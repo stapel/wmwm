@@ -149,8 +149,18 @@ tiling_t wtree_parent_tiling(wtree_t *node)
 // set tiling mode
 void wtree_set_tiling(wtree_t *node, tiling_t tiling)
 {
+	assert(node != NULL);
 	wtree_data(node)->tile = tiling;
 }
+
+void wtree_set_parent_tiling(wtree_t *node, tiling_t tiling)
+{
+	assert(node != NULL);
+	assert(node->parent != NULL);
+	wtree_data(node->parent)->tile = tiling;
+}
+
+
 
 /*************************************************************/
 // node action functions

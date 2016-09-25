@@ -103,6 +103,7 @@ uint16_t wtree_get_tiles(wtree_t *node);
 tiling_t wtree_tiling(wtree_t *node);
 tiling_t wtree_parent_tiling(wtree_t *node);
 void wtree_set_tiling(wtree_t *node, tiling_t tiling);
+void wtree_set_parent_tiling(wtree_t *node, tiling_t tiling);
 
 void wtree_add_sibling(wtree_t *current, wtree_t *node);
 void wtree_append_sibling(wtree_t *current, wtree_t *node);

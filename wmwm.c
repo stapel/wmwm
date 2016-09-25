@@ -165,7 +165,8 @@ list_t *monlist = NULL;			/* List of all physical monitor outputs. */
 
 wm_mode_t MCWM_mode = mode_nothing;		/* Internal mode, such as move or resize */
 
-tiling_t tiling_mode = DEFAULT_TILING_MODE; /* current tiling mode */
+
+tiling_t tiling_mode = DEFAULT_TILING_MODE; /* global tiling mode */
 
 /*
  * Workspace list: Every workspace has a list of all visible
@@ -183,6 +184,7 @@ struct keys {
 	{ USERKEY_MOVE_UP, 0},
 	{ USERKEY_MOVE_RIGHT, 0},
 	{ USERKEY_TILING, 0},
+	{ USERKEY_FLOATING, 0},
 	{ USERKEY_RAISE, 0},
 	{ USERKEY_TERMINAL, 0},
 	{ USERKEY_MENU, 0},
@@ -389,8 +391,60 @@ static void set_focuswin(uint32_t ws, client_t* client);
 /* setup workspace array */
 static void setup_workspaces();
 
+/* update clues in nodes and update screen */
 /* Function bodies. */
 /* new functions for tiling-branch */
+
+static void toggle_tiling(client_t *client);
+static void toggle_floating(client_t *client);
+
+/* update window sizes below wtree_t */
+static void update_clues(wtree_t *node, xcb_rectangle_t rect);
+
+
+// XXX tiling tmp hack
+static xcb_rectangle_t screen_rect()
+{
+	xcb_rectangle_t geo;
+	geo.x = 0;
+	geo.y = 0;
+	geo.width  = screen->width_in_pixels;
+	geo.height = screen->height_in_pixels;
+	return geo;
+}
+
+void toggle_floating(client_t *client)
+{
+	if (client == NULL)
+		return;
+	return;
+	/* XXX tiling
+	 * not yet */
+}
+
+// toggle tiling mode of parent container
+void toggle_tiling(client_t *client)
+{
+	assert(client != NULL);
+
+	switch (wtree_parent_tiling(client->wsitem)) {
+		case TILING_VERTICAL:
+			wtree_set_parent_tiling(client->wsitem, TILING_HORIZONTAL);
+			// XXX tiling, store geometry in tiling nodes
+			// so I only need to update children
+			update_clues(wslist[client->ws].root, screen_rect());
+			wtree_print_tree(wslist[client->ws].root);
+			break;
+		case TILING_HORIZONTAL:
+		case TILING_FLOATING:
+			wtree_set_parent_tiling(client->wsitem, TILING_VERTICAL);
+			// XXX tiling, store geometry in tiling nodes
+			update_clues(wslist[client->ws].root, screen_rect());
+			wtree_print_tree(wslist[client->ws].root);
+			break;
+	}
+}
+
 void setup_workspaces()
 {
 	for (uint32_t i = 0; i < WORKSPACES; i++) {
@@ -1409,6 +1463,7 @@ bool setup_keys(void)
 
 		switch (i) {
 			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
+			case KEY_TILING: case KEY_FLOATING:
 				/* grab hjkl with extended modmask for resizing */
 				xcb_grab_key(conn, 1, screen->root,
 						EXTRA_MODKEY,
@@ -3257,6 +3312,8 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 	key_enum_t key = key_from_keycode(e->detail);
 
+	client_t *fwin = focuswin(curws);
+
 	/* TODO impossible -> grabbed keys ? */
 	/* XXX: This happens for Meta_L/Alt_L */
 	if (key == KEY_MAX) {
@@ -3276,21 +3333,33 @@ void handle_key_press(xcb_generic_event_t *ev)
 		case EXTRA_MODKEY:
 			switch (key) {
 				case KEY_LEFT:		/* left */
-					resize_step(focuswin(curws), step_left);
+					resize_step(fwin, step_left);
 					break;
 
 				case KEY_DOWN:		/* down */
-					resize_step(focuswin(curws), step_up);
+					resize_step(fwin, step_up);
 					break;
 
 				case KEY_UP:		/* up */
-					resize_step(focuswin(curws), step_down);
+					resize_step(fwin, step_down);
 					break;
 
 				case KEY_RIGHT:		/* right */
-					resize_step(focuswin(curws), step_right);
+					resize_step(fwin, step_right);
 					break;
 
+				// XXX tiling
+				/* toggle floating mode of focus-win */
+				case KEY_FLOATING:
+					if (fwin)
+						toggle_floating(fwin);
+					break;
+
+				/* toggle tiling mode of focus-win */
+				case KEY_TILING:
+					if (fwin)
+						toggle_tiling(fwin);
+					break;
 				default:
 					break;
 			}
@@ -3327,7 +3396,21 @@ void handle_key_press(xcb_generic_event_t *ev)
 					move_step(focuswin(curws), step_right);
 					break;
 
-				case KEY_TILING:		/* v */
+				case KEY_TILING:	/* v */
+					switch (tiling_mode) {
+						case TILING_FLOATING:
+							tiling_mode = DEFAULT_TILING_MODE;
+							break;
+						case TILING_VERTICAL:
+							tiling_mode = TILING_HORIZONTAL;
+							break;
+						case TILING_HORIZONTAL:
+							tiling_mode = TILING_VERTICAL;
+							break;
+					}
+					break;
+
+				case KEY_FLOATING:/* f */
 					if (tiling_mode == TILING_HORIZONTAL)
 						tiling_mode = TILING_VERTICAL;
 					else

@@ -182,7 +182,7 @@ struct keys {
 	{ USERKEY_MOVE_DOWN, 0},
 	{ USERKEY_MOVE_UP, 0},
 	{ USERKEY_MOVE_RIGHT, 0},
-	{ USERKEY_MAXVERT, 0},
+	{ USERKEY_TILING, 0},
 	{ USERKEY_RAISE, 0},
 	{ USERKEY_TERMINAL, 0},
 	{ USERKEY_MENU, 0},
@@ -3327,7 +3327,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 					move_step(focuswin(curws), step_right);
 					break;
 
-				case KEY_VERTICAL:		/* v */
+				case KEY_TILING:		/* v */
 					if (tiling_mode == TILING_HORIZONTAL)
 						tiling_mode = TILING_VERTICAL;
 					else

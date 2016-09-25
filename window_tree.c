@@ -66,6 +66,17 @@ static void wtree_minus(wtree_t *node)
 /***************************************************************/
 // memory handling functions
 
+
+// only child
+bool wtree_is_singleton(wtree_t* child)
+{
+	assert(child != NULL);
+	assert(child->parent != NULL);
+
+	return (child->parent->child == child);
+}
+
+
 // client constructor
 wtree_t* wtree_new_client(client_t *client)
 {
@@ -330,11 +341,20 @@ static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 	char *num = calloc(10, 1);
 
 	if (wtree_is_tiling(cur)) {
-		if (wtree_tiling(cur) == TILING_VERTICAL)
-			snprintf(num, 10, "V%d", *i);
-		else
-			snprintf(num, 10, "H%d", *i);
-
+		switch (wtree_tiling(cur)) {
+			case TILING_VERTICAL:
+				snprintf(num, 10, "V%d", *i);
+				break;
+			case TILING_HORIZONTAL:
+				snprintf(num, 10, "H%d", *i);
+				break;
+			case TILING_FLOATING:
+				snprintf(num, 10, "F%d", *i);
+				break;
+			default:
+				snprintf(num, 10, "X%d", *i);
+				break;
+		}
 		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=triangle];\n",
 				(uintptr_t)cur, num);
 	} else {

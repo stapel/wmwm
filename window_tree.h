@@ -44,28 +44,6 @@ typedef struct container {
 	};
 } container_t;
 
-/****************************************************************/
-
-/* Die tatsächlich in wmwm.c benutzten Funktionenen: */
-/****************************************************************/
-/*
- * einen Client nach dem aktuellem node einfügen
-   Dabei gegebenenfalls nachfolger beachten
- * einen node rausnehmen (prüfen ob children etc), aufräumen
- *
-
-*/
-
-/* einen containter? (client) nach aktuellem node (container?) einfügen */
-//add_sibling
-
-/* sibling verschieben */
-//move_sibling
-
-/****************************************************************/
-/* Die eigentlich wichtigen Funktionen sollten container-tree sein */
-/****************************************************************/
-
 /* client-wtree-node *****************
    - MUST NOT HAVE child
    - MUST HAVE a parent
@@ -97,7 +75,7 @@ client_t *wtree_client(wtree_t *node);
 
 bool wtree_is_client(wtree_t *node);
 bool wtree_is_tiling(wtree_t *node);
-
+bool wtree_is_singleton(wtree_t* child);
 
 uint16_t wtree_get_tiles(wtree_t *node);
 tiling_t wtree_tiling(wtree_t *node);

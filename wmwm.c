@@ -908,9 +908,12 @@ int update_geometry(client_t *client,
 		geo = *geometry;
 	else
 		geo = client->geometry;
-	goto out;
+
 
 	// XXX tiling
+	goto out;
+	// XXX tiling
+
 	//
 	const xcb_size_hints_t *hints = &client->hints;
 	const int border = client->fullscreen ? 0 : conf.borderwidth;
@@ -3135,8 +3138,13 @@ void handle_button_press(xcb_generic_event_t* ev)
 
 	raise_client(focuswin(curws));
 
+	// if it's a non floating window, just return
+	if (wtree_tiling(focuswin(curws)->wsitem) != TILING_FLOATING)
+		return;
+
 	switch (e->detail) {
 		case 1: /* left button: move */
+				return;
 			set_mode(mode_move);
 			break;
 		case 3: /* right button: resize */

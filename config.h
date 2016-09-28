@@ -70,6 +70,8 @@
 /* Default width of border window, in pixels. Used unless -b width. */
 #define BORDERWIDTH 1
 
+#define GAPWIDTH 5
+
 /*
  * Keysym codes for window operations. Look in X11/keysymdefs.h for
  * actual symbols.

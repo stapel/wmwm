@@ -36,8 +36,6 @@ static container_t* container_new_tiling(tiling_t tile)
 {
 	container_t *tmp = calloc(1, sizeof(container_t));
 	if (tmp == NULL) return NULL;
-	tmp->x_scale = 0;
-	tmp->y_scale = 0;
 	tmp->type = CONTAINER_TILING;
 	tmp->tile = tile;
 	tmp->tiles = 0;
@@ -73,7 +71,7 @@ bool wtree_is_singleton(wtree_t* child)
 	assert(child != NULL);
 	assert(child->parent != NULL);
 
-	return (child->parent->child == child);
+	return (child->parent->child == child && child->next == NULL);
 }
 
 

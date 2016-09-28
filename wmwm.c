@@ -217,12 +217,13 @@ struct modkeycodes {
 
 /* Global configuration. */
 struct conf {
-	int borderwidth;			/* Do we draw borders? If so, how large? */
-	char *terminal;				/* Path to terminal to start. */
-	char *menu;					/* Path to menu to start. */
-	uint32_t focuscol;			/* Focused border color. */
-	uint32_t unfocuscol;		/* Unfocused border color.  */
-	bool allowicons;			/* Allow windows to be unmapped. */
+	int borderwidth;		/* Do we draw borders? If so, how large? */
+	int gapwidth;			/* Do we have gaps? If so, how large? */
+	char *terminal;			/* Path to terminal to start. */
+	char *menu;				/* Path to menu to start. */
+	uint32_t focuscol;		/* Focused border color. */
+	uint32_t unfocuscol;	/* Unfocused border color.  */
+	bool allowicons;		/* Allow windows to be unmapped. */
 } conf;
 
 /* elemental atoms not in ewmh */
@@ -415,6 +416,46 @@ static xcb_rectangle_t screen_rect()
 
 void toggle_floating(client_t *client)
 {
+	// XXX only append newly opened window to tiling node, not floating?
+	// XXX save original geometry?
+
+	if (wtree_is_singleton(client->wsitem)) {
+		// only child, replace parent container
+		switch (wtree_parent_tiling(client->wsitem)) {
+			case TILING_FLOATING:
+				if (client->wsitem->parent->parent)
+				{
+					// parent is not root, woot
+				} else {
+
+					wtree_set_parent_tiling(client->wsitem,
+									DEFAULT_TILING_MODE);
+				}
+				break;
+			case TILING_HORIZONTAL:
+			case TILING_VERTICAL:
+				wtree_set_parent_tiling(client->wsitem, TILING_FLOATING);
+				break;
+		}
+	} else {
+		switch (wtree_parent_tiling(client->wsitem)) {
+			case TILING_HORIZONTAL:
+			case TILING_VERTICAL:
+				// replace current node with floating node
+				wtree_inter_tile(client->wsitem, TILING_FLOATING);
+				break;
+			case TILING_FLOATING:
+				// XXX this should never happen, don't add siblings to floats
+				// XXX why not?
+				assert(false);
+				break;
+		}
+
+	}
+
+	update_clues(wslist[client->ws].root, screen_rect());
+	wtree_print_tree(wslist[client->ws].root);
+
 	if (client == NULL)
 		return;
 	return;
@@ -732,6 +773,8 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 	// XXX tiling: borderwidth and gap width
 
 	if (wtree_is_tiling(node)) {
+	   	if (wtree_tiling(node) == TILING_FLOATING)
+			return;
 		xcb_rectangle_t tmp = rect;
 		int tiles = wtree_get_tiles(node);
 
@@ -770,7 +813,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 	update_clues(node->next, rect);
 
 	if (wtree_is_client(node)) {
-		int gaps = conf.borderwidth + 5;
+		int gaps = conf.borderwidth + conf.gapwidth;
 
 		rect.x += gaps;
 		rect.y += gaps;
@@ -839,7 +882,7 @@ void set_workspace(client_t *client, uint32_t ws)
 				PDEBUG(">>  sw| focuswin different tiling\n");
 				/* New tiling mode */
 
-				if (focuswin(ws)->wsitem->prev == NULL && focuswin(ws)->wsitem->next == NULL) {
+				if (wtree_is_singleton(focuswin(ws)->wsitem)) {
 					PDEBUG(">>> sw| singlechild \n");
 					// different tiling mode focuswin is only child
 					// just change tiling mode
@@ -952,24 +995,21 @@ int update_geometry(client_t *client,
 	xcb_rectangle_t monitor;
 	xcb_rectangle_t geo;
 
-
 	if (geometry)
 		geo = *geometry;
 	else
 		geo = client->geometry;
 
-
-	// XXX tiling
-	goto out;
-	// XXX tiling
-
-	//
 	const xcb_size_hints_t *hints = &client->hints;
 	const int border = client->fullscreen ? 0 : conf.borderwidth;
 
 	get_monitor_geometry(client->monitor, &monitor);
 
 	/* XXX: check if geometry or monitor geometry changed (or hints, maybe set a geo changed flag) */
+
+	// or fullscreen ? XXX: some hints?
+	if (wtree_parent_tiling(client->wsitem) != TILING_FLOATING)
+		goto out;
 
 	/* Fullscreen, skip the checks  */
 	if (client->fullscreen) {
@@ -4039,6 +4079,7 @@ int main(int argc, char **argv)
 
 	/* Set up defaults. */
 
+	conf.gapwidth = GAPWIDTH;
 	conf.borderwidth = BORDERWIDTH;
 	conf.terminal = TERMINAL;
 	conf.menu = MENU;
@@ -4050,6 +4091,9 @@ int main(int argc, char **argv)
 		switch (ch) {
 			case 'b':
 				conf.borderwidth = atoi(optarg);
+				break;
+			case 'g':
+				conf.gapwidth = atoi(optarg);
 				break;
 			case 'i':
 				conf.allowicons = true;

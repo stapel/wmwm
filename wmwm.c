@@ -1362,6 +1362,7 @@ client_t *create_client(xcb_window_t win)
 	client->id = win;
 	client->frame = XCB_WINDOW_NONE;
 
+	/* XXX tiling: vertmax, fullscreen */
 	client->monitor = NULL;
 	client->usercoord = false;
 	client->vertmaxed = false;
@@ -2389,7 +2390,8 @@ void resize_step(client_t *client, step_direction_t direction)
 
 	xcb_rectangle_t geometry = client->geometry;
 
-	if (client->fullscreen) {
+	/* XXX tiling: fullscreen */
+	if (client->fullscreen || wtree_parent_tiling(client->wsitem) != TILING_FLOATING ) {
 		/* Can't resize a fully maximized window. */
 		return;
 	}
@@ -2477,7 +2479,7 @@ void move_step(client_t *client, step_direction_t direction)
 
 	xcb_rectangle_t geo = client->geometry;
 
-	if (client->fullscreen) {
+	if (client->fullscreen || wtree_parent_tiling(client->wsitem) != TILING_FLOATING) {
 		/* We can't move a fully maximized window. */
 		return;
 	}
@@ -2831,7 +2833,8 @@ void warp_focuswin(step_direction_t direction)
 	int16_t pointx;
 	int16_t pointy;
 
-	if (! focuswin(curws) || focuswin(curws)->fullscreen)
+	if (! focuswin(curws) || focuswin(curws)->fullscreen
+			|| wtree_parent_tiling(focuswin(curws)->wsitem) != TILING_FLOATING)
 		return;
 
 	xcb_rectangle_t mon;

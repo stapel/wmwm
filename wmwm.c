@@ -305,7 +305,6 @@ static void move_step(client_t *client, step_direction_t direction);
 static void set_workspace(client_t *client, uint32_t ws);
 static void change_workspace(uint32_t ws);
 
-static void fix_client(client_t *client);
 static void update_shape(client_t *client);
 static void raise_client(client_t *client);
 static void raise_or_lower_client(client_t *client);
@@ -778,9 +777,6 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		xcb_rectangle_t tmp = rect;
 		int tiles = wtree_get_tiles(node);
 
-		fprintf(stderr, "%p is tiling with %d clients\n", (void*)node, tiles);
-		fprintf(stderr, "@old %d,%d,%d,%d\n", rect.x, rect.y, rect.width, rect.height);
-		show_node("uc tiling:", node);
 		// fix position for the tiling container
 		if (node->prev && node->parent) {
 			if (wtree_tiling(node->parent) == TILING_VERTICAL)
@@ -795,7 +791,6 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 			if (wtree_tiling(node) == TILING_HORIZONTAL)
 				tmp.height /= tiles;
 		}
-		fprintf(stderr, "@new %d,%d,%d,%d\n", tmp.x, tmp.y, tmp.width, tmp.height);
 		// jump to the clients
 		update_clues(node->child, tmp);
 	}
@@ -820,7 +815,6 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		rect.width  -= gaps * 2;
 		rect.height -= gaps * 2;
 
-		fprintf(stderr, "tiling: %d,%d,%d,%d\n", rect.x, rect.y, rect.width, rect.height);
 		update_geometry((client_t*)wtree_client(node), &rect);
 	}
 }

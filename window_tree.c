@@ -271,7 +271,7 @@ void wtree_remove(wtree_t *node)
 	if (parent && wtree_is_tiling(parent)) {
 		// decrement child counter
 		if (wtree_tiling(parent) != TILING_FLOATING) // XXX hack
-			if (wtree_is_tiling(node) && wtree_tiling(node) != TILING_FLOATING)
+			if (!wtree_is_tiling(node) || (wtree_is_tiling(node) && wtree_tiling(node) != TILING_FLOATING))
 				wtree_minus(parent);
 		// in case of non-root-parent tile, remove it
 		if (tree_child(parent) == NULL && tree_parent(parent)) {

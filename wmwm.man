@@ -7,6 +7,9 @@ wmwm \- fork of MC's Window Manager for X11 mcwm.
 .B \-b
 ] width
 [
+.B \-g
+]
+[
 .B \-i
 ]
 [
@@ -32,6 +35,8 @@ wmwm \- fork of MC's Window Manager for X11 mcwm.
 .SH OPTIONS
 .PP
 \-b width sets border width to this many pixels.
+.PP
+\-g width sets gap width to this many pixels.
 .PP
 \-i turns on icons/hidden windows.
 .B Please note
@@ -89,8 +94,17 @@ raise or lower (toggles).
 .B x
 maximize (toggles).
 .IP \(bu 2
+.B f
+toggle floating mode.
+.IP \(bu 2
 .B v
-maximize vertically (toggles).
+toggle tiling mode.
+.IP \(bu 2
+.B F
+toggle floating mode of current window.
+.IP \(bu 2
+.B V
+toggle tiling mode of current container.
 .IP \(bu 2
 .B H
 resize left.
@@ -140,12 +154,6 @@ go to next window in the current workspace window ring. If you release
 MODKEY or press another command key wmwm will change focus to the new
 window. A new press of MODKEY + Tab will bring you back to the window
 where you last had focus.
-.IP \(bu 2
-.B f
-fix window so it is visible on all workspaces (toggles). Note that
-this is also used to move windows between workspaces: First fix the
-window, change to the workspace you want, then unfix the window on the
-new workspace.
 .IP \(bu 2
 .B i
 iconify (or hide) window from the display. Only usable when wmwm has

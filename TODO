@@ -1,6 +1,18 @@
 TODO
 -------------------
 
+ * Merge Containers
+ *! Make wtree functions use client_t to hide tree stuff?
+ * "optimal" tiling-mode, based on height/width
+ * update_geometry -> update_geometry + actually_set_geometry ?
+ * swap clients
+ * fullscreen ?
+
+
+ * I could remove the prev pointer..
+ * Key handling
+ * client list atom in root window: all windows or workdesk?
+ * checks for NULL in list and tree handling is unsatisfying
  * !overflow/underflow in geometry.x += -= etc.
  * DIRTY state for when screen resolution changes for other workspaces?
    or make checks on position/size on each workspace switch?

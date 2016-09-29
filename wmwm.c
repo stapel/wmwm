@@ -779,9 +779,9 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 
 		// fix position for the tiling container
 		if (node->prev && node->parent) {
-			if (wtree_tiling(node->parent) == TILING_VERTICAL)
+			if (wtree_parent_tiling(node) == TILING_VERTICAL)
 				tmp.x += rect.width;
-			if (wtree_tiling(node->parent) == TILING_HORIZONTAL)
+			if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
 				tmp.y += rect.height;
 		}
 		// fix width of the tiling container if there's more than one child
@@ -800,9 +800,9 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		return;
 
 	if (node->prev) {
-		if (wtree_tiling(node->parent) == TILING_VERTICAL)
+		if (wtree_parent_tiling(node) == TILING_VERTICAL)
 			rect.x += rect.width;
-		if (wtree_tiling(node->parent) == TILING_HORIZONTAL)
+		else if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
 			rect.y += rect.height;
 	}
 	update_clues(node->next, rect);

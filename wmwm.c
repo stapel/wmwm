@@ -3220,12 +3220,11 @@ void handle_button_press(xcb_generic_event_t* ev)
 	raise_client(focuswin(curws));
 
 	// if it's a non floating window, just return
-	if (wtree_tiling(focuswin(curws)->wsitem) != TILING_FLOATING)
+	if (wtree_parent_tiling(focuswin(curws)->wsitem) != TILING_FLOATING)
 		return;
 
 	switch (e->detail) {
 		case 1: /* left button: move */
-				return;
 			set_mode(mode_move);
 			break;
 		case 3: /* right button: resize */
@@ -3436,13 +3435,11 @@ void handle_key_press(xcb_generic_event_t *ev)
 					}
 					break;
 
-				case KEY_FLOATING:/* f */
-					if (tiling_mode == TILING_HORIZONTAL)
-						tiling_mode = TILING_VERTICAL;
+				case KEY_FLOATING:	/* f */
+					if (tiling_mode == TILING_FLOATING)
+						tiling_mode = DEFAULT_TILING_MODE;
 					else
-						tiling_mode = TILING_HORIZONTAL;
-
-	//				toggle_vertical(focuswin(curws));
+						tiling_mode = TILING_FLOATING;
 					break;
 
 				case KEY_RAISE_LOWER:		/* r */

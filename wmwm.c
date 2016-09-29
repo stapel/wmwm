@@ -833,8 +833,7 @@ void set_workspace(client_t *client, uint32_t ws)
 		return;
 
 	/* Is it currently on any workspace */
-	if (client->ws != WORKSPACE_NONE) {
-		if (focuswin(client->ws) == client)
+	if (client->ws != WORKSPACE_NONE && focuswin(client->ws) == client)
 			set_focuswin(client->ws, NULL);
 	}
 	client->ws = ws;

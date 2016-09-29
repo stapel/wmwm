@@ -15,7 +15,6 @@
 #define D(x)
 #endif
 
-
 // container helper functions, local only
 static container_t* container_new()
 {
@@ -239,7 +238,25 @@ void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
 	wtree_append_child(tiler, node);
 	// add tiler as sibling to current
 	wtree_add_sibling(current, tiler);
+
+	if (tiling == TILING_FLOATING) // XXX dirty
+		wtree_minus(current->parent);
 }
+
+void wtree_append_tile_child(wtree_t *parent, wtree_t *node,
+		tiling_t tiling)
+{
+	wtree_t *tiler = wtree_new_tiling(tiling);
+	// add node to tiler
+	wtree_append_child(tiler, node);
+	// add tiler as sibling to current
+	wtree_append_child(parent, tiler);
+
+	if (tiling == TILING_FLOATING) // XXX dirty
+		wtree_minus(parent);
+}
+
+
 
 /* unlink node from tree, no children handling */
 void wtree_remove(wtree_t *node)
@@ -253,7 +270,9 @@ void wtree_remove(wtree_t *node)
 	// update parent node
 	if (parent && wtree_is_tiling(parent)) {
 		// decrement child counter
-		wtree_minus(parent);
+		if (wtree_tiling(parent) != TILING_FLOATING) // XXX hack
+			if (wtree_is_tiling(node) && wtree_tiling(node) != TILING_FLOATING)
+				wtree_minus(parent);
 		// in case of non-root-parent tile, remove it
 		if (tree_child(parent) == NULL && tree_parent(parent)) {
 			wtree_remove(parent);
@@ -353,8 +372,8 @@ static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 				snprintf(num, 10, "X%d", *i);
 				break;
 		}
-		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=triangle];\n",
-				(uintptr_t)cur, num);
+		fprintf(file, "%"PRIuPTR" [label=\"%s (%d)\" shape=triangle];\n",
+				(uintptr_t)cur, num, wtree_get_tiles(cur));
 	} else {
 		snprintf(num, 10, "%d", *i);
 		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=circle];\n",

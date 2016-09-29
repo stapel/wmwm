@@ -773,6 +773,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 
 	if (wtree_is_tiling(node)) {
 	   	if (wtree_tiling(node) == TILING_FLOATING)
+			// Floating nodes are not handled, neither are their children
 			return;
 		xcb_rectangle_t tmp = rect;
 		int tiles = wtree_get_tiles(node);
@@ -835,76 +836,83 @@ void set_workspace(client_t *client, uint32_t ws)
 	/* Is it currently on any workspace */
 	if (client->ws != WORKSPACE_NONE && focuswin(client->ws) == client)
 			set_focuswin(client->ws, NULL);
-	}
+
 	client->ws = ws;
 
 	if (ws == WORKSPACE_NONE) {
 		wtree_remove(client->wsitem);
-	} else {
-		/* new workspace to be added to */
-		/* Is there a focused window we can add to ? */
-	   	if (! focuswin(ws)) {
-			PDEBUG(">   sw| no focuswin\n");
-			/* No, attach to root */
-			if (wslist[ws].root->child == NULL) {
-				PDEBUG(">>  sw| no root child\n");
-				/* root has no children, add appropriately tiled */
-				if (wtree_tiling(wslist[ws].root) != tiling_mode) {
-					PDEBUG(">>> sw| root child different tiling\n");
-					wtree_set_tiling(wslist[ws].root, tiling_mode);
-				}
-				wtree_append_child(wslist[ws].root, client->wsitem);
-			} else {
-				PDEBUG(">>  sw| root child\n");
-				/* there is a child on root, just add sibling */
-				if (wtree_tiling(wslist[ws].root) != tiling_mode) {
-					PDEBUG(">>> sw| root child different tiling\n");
-					/* different orientation */
-					wtree_add_tile_sibling(wslist[ws].root->child, client->wsitem, tiling_mode);
-				} else {
-					PDEBUG(">>> sw| root child same tiling\n");
-					wtree_add_sibling(wslist[ws].root->child, client->wsitem);
-				}
-			}
+		// should it be freed? XXX
+		return;
+	}
+
+	// XXX hack
+	if (focuswin(client->ws) &&
+			wtree_parent_tiling(focuswin(client->ws)->wsitem)
+				== TILING_FLOATING)
+		set_focuswin(client->ws, NULL);
+
+	/* new workspace to be added to */
+	/* Is there a focused window we can add to ? */
+
+	wtree_t *node = client->wsitem;
+
+	if (focuswin(ws) != NULL) {
+		/* We have a window to attach to */
+		if (tiling_mode == TILING_FLOATING) {
+			// add single floating-tile
+			wtree_add_tile_sibling(focuswin(ws)->wsitem, node, tiling_mode);
 		} else {
-			PDEBUG(">   sw| focuswin\n");
-			/* We have a window to attach to */
-			/* XXX tiling: focuswin does not always have parent ??? */
-
+			if (wtree_parent_tiling(focuswin(ws)->wsitem) == TILING_FLOATING) {
+				// parent is tiling node, add sibling
+				abort();
+			}
+			// no floating shit
 			if (wtree_parent_tiling(focuswin(ws)->wsitem) != tiling_mode) {
-				PDEBUG(">>  sw| focuswin different tiling\n");
-				/* New tiling mode */
-
+				/* different tiling mode */
 				if (wtree_is_singleton(focuswin(ws)->wsitem)) {
-					PDEBUG(">>> sw| singlechild \n");
 					// different tiling mode focuswin is only child
-					// just change tiling mode
+					// change tiling mode
 					wtree_set_tiling(focuswin(ws)->wsitem->parent, tiling_mode);
-					wtree_add_sibling(focuswin(ws)->wsitem, client->wsitem);
+					wtree_add_sibling(focuswin(ws)->wsitem, node);
 				} else {
-					PDEBUG(">>> sw| rep current node with tiler and add\n");
-					show_node("focuswin before: ", focuswin(ws)->wsitem);
 					wtree_inter_tile(focuswin(ws)->wsitem, tiling_mode);
-					show_node("focuswin after : ", focuswin(ws)->wsitem);
-					wtree_add_sibling(focuswin(ws)->wsitem,
-							client->wsitem);
-					show_node("focuswin w sib : ", focuswin(ws)->wsitem);
+					wtree_add_sibling(focuswin(ws)->wsitem, node);
 				}
 			} else {
-				PDEBUG(">>  sw| focuswin same tiling\n");
-				/* add after focuswin */
-				wtree_add_sibling(focuswin(ws)->wsitem, client->wsitem);
+				/* same tiling mode, add after focuswin */
+				wtree_add_sibling(focuswin(ws)->wsitem, node);
 			}
 		}
-		/* Set _NET_WM_DESKTOP accordingly or leave it  */
-		xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
-
-		// fixup geometries
-		update_clues(wslist[ws].root, screen_rect());
-		wtree_print_tree(wslist[ws].root);
-
-		xcb_flush(conn);
+	} else {
+		/* no active window, attach to root */
+		if (tiling_mode == TILING_FLOATING) {
+			// tiling node is always alone :(
+			wtree_append_tile_child(wslist[ws].root, node, tiling_mode);
+		} else {
+			if (wslist[ws].root->child == NULL) {
+				/* root has no children, add appropriately tiled */
+				if (wtree_tiling(wslist[ws].root) != tiling_mode)
+					wtree_set_tiling(wslist[ws].root, tiling_mode);
+				wtree_append_child(wslist[ws].root, node);
+			} else {
+				/* there is a child on root, just add sibling */
+				if (wtree_tiling(wslist[ws].root) != tiling_mode) {
+					/* different orientation */
+					wtree_append_tile_child(wslist[ws].root, node, tiling_mode);
+				} else {
+					wtree_add_sibling(wslist[ws].root->child, node);
+				}
+			}
+		}
 	}
+	/* Set _NET_WM_DESKTOP accordingly or leave it  */
+	xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
+
+	// fixup geometries
+	update_clues(wslist[ws].root, screen_rect());
+	wtree_print_tree(wslist[ws].root);
+
+	xcb_flush(conn);
 }
 
 /* Change current workspace to ws. */
@@ -2094,7 +2102,11 @@ monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 void raise_client(client_t *client)
 {
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
-	xcb_configure_window(conn, client->frame, XCB_CONFIG_WINDOW_STACK_MODE, values);
+	assert(client != NULL);
+	// only raise floats
+	assert(client != NULL);
+	if (wtree_parent_tiling(client->wsitem) == TILING_FLOATING)
+		xcb_configure_window(conn, client->frame, XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
 
 /*
@@ -2105,8 +2117,10 @@ void raise_or_lower_client(client_t *client)
 {
 	uint32_t values[] = { XCB_STACK_MODE_OPPOSITE };
 	xcb_drawable_t win;
+	assert(client != NULL);
 
-	if (! client)
+	// only raise floats
+	if (! client || wtree_parent_tiling(client->wsitem) != TILING_FLOATING)
 		return;
 
 	win = client->frame;

@@ -68,6 +68,7 @@ void wtree_inter_tile(wtree_t *client, tiling_t mode);
 
 /* add tiling-node as sibling to current and client-node as child to tiling-node */
 void wtree_add_tile_sibling(wtree_t *current, wtree_t *node, tiling_t tiling);
+void wtree_append_tile_child(wtree_t *current, wtree_t *node, tiling_t tiling);
 
 /* unlink node from tree, fix siblings and parent */
 void wtree_remove(wtree_t *node);

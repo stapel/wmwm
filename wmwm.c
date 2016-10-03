@@ -1161,10 +1161,11 @@ void new_win(xcb_window_t win)
 		}
 	}
 
-#if 0
-	apply_gravity(client, &geometry);
-	update_geometry(client, &geometry);
-#endif
+	if (wtree_is_floating(client->wsitem) || client->fullscreen) {
+		apply_gravity(client, &geometry);
+		update_geometry(client, &geometry);
+	}
+
 	/* Show window on screen. */
 	set_default_events(client);
 	show(client);
@@ -3703,7 +3704,7 @@ void handle_configure_request(xcb_generic_event_t *ev)
 	}
 
 	/* Don't resize if maximized. */
-	if (! client->fullscreen) {
+	if (! client->fullscreen && wtree_is_floating(client->wsitem)) {
 		xcb_rectangle_t geometry = client->geometry;
 
 		if (e->value_mask & XCB_CONFIG_WINDOW_X)

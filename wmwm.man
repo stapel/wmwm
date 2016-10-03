@@ -16,6 +16,9 @@ wmwm \- fork of MC's Window Manager for X11 mcwm.
 .B \-t
 .I terminal-program
 ] [
+.B \-m
+.I menu-program
+] [
 .B \-f
 .I color
 ] [
@@ -46,6 +49,9 @@ scripts (see below) to get the window mapped again.
 .PP
 \-t urxvt will start urxvt when MODKEY + Return is pressed. Change to
 your prefered terminal program or something else entirely.
+.PP
+\-m dmenu_run will start dmenu_run when MODKEY + d is pressed. Change to
+your prefered menu program or something else entirely.
 .PP
 \-f color sets border color for focused window to a named color,
 such as "red".
@@ -162,7 +168,7 @@ back. You have to use an external program such as a panel or the
 mcicon or 9icon script in the wmwm distribution.
 .IP \(bu 2
 .B 0\-9
-go to workspace n, 0-9.
+go to workspace n, with SHIFT: move active window to workspace n (0-9).
 .IP \(bu 2
 .B End
 close window.

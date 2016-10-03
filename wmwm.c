@@ -708,7 +708,6 @@ bool ewmh_is_fullscreen(client_t* client)
 
 	xcb_ewmh_get_atoms_reply_wipe(&atoms);
 	return ret;
-
 }
 
 /*
@@ -2736,10 +2735,19 @@ void erase_client(client_t *client)
  */
 void attach_frame(client_t *client)
 {
-	/* mask and values for frame window */
-	uint32_t	mask = XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
+	/* mask and values for frame window, the order matters */
+	uint32_t mask =
+		XCB_CW_BACK_PIXEL
+		| XCB_CW_BORDER_PIXEL
+		| XCB_CW_OVERRIDE_REDIRECT
+		| XCB_CW_EVENT_MASK;
 
-	uint32_t	values[3] = { conf.unfocuscol, 1, HIDDEN_FRAME_EVENTS };
+	uint32_t values[4] = {
+		conf.unfocuscol,
+		0ul,
+		1,
+		HIDDEN_FRAME_EVENTS
+	};
 
 	const xcb_rectangle_t *geo = &(client->geometry);
 

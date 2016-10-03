@@ -2075,7 +2075,7 @@ void raise_client(client_t *client)
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
 	assert(client != NULL);
 	// only raise floats
-	if (wtree_is_floating(client->wsitem))
+	if (wtree_is_floating(client->wsitem) || client->fullscreen)
 		xcb_configure_window(conn, client->frame,
 				XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
@@ -2539,7 +2539,10 @@ void unmax(client_t *client)
 
 	/* Restore geometry. */
 	client->fullscreen = client->vertmaxed = false;
-	update_geometry(client, &(client->geometry_last));
+	if (wtree_is_floating(client->wsitem))
+		update_geometry(client, &(client->geometry_last));
+	else
+		update_clues(wslist[client->ws]);
 
 	set_borders(client->frame, conf.borderwidth);
 	ewmh_frame_extents(client->id, conf.borderwidth);

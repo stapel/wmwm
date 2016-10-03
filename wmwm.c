@@ -736,8 +736,6 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 	if (node == NULL)
 		return;
 
-	// XXX tiling: borderwidth and gap width
-
 	// root node
 	if (wtree_is_workspace(node)) {
 		update_clues(node->child, rect);
@@ -766,7 +764,9 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		update_clues(node->child, tmp);
 	}
 
-	if (node->prev && ! wtree_is_floating(node)) {
+	// XXX HERE TO WORK NEXT
+	// this logic is flawed in case prev is floating
+	if (node->prev && ! (wtree_is_client(node) && wtree_is_floating(node))) {
 		if (wtree_parent_tiling(node) == TILING_VERTICAL)
 			rect.x += rect.width;
 		else if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
@@ -2542,7 +2542,7 @@ void unmax(client_t *client)
 	if (wtree_is_floating(client->wsitem))
 		update_geometry(client, &(client->geometry_last));
 	else
-		update_clues(wslist[client->ws]);
+		update_clues(wslist[client->ws], screen_rect());
 
 	set_borders(client->frame, conf.borderwidth);
 	ewmh_frame_extents(client->id, conf.borderwidth);

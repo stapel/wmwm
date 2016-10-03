@@ -1459,7 +1459,10 @@ bool setup_keys(void)
 		}
 
 		switch (i) {
+			// moving, resizing
 			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
+
+			// toggle modes and condition of current container/client
 			case KEY_TILING: case KEY_FLOATING:
 
 			// move to workspace
@@ -1473,22 +1476,10 @@ bool setup_keys(void)
 						keys[i].keycode,
 						XCB_GRAB_MODE_ASYNC,
 						XCB_GRAB_MODE_ASYNC);
-
-				/* grab hjkl with extended modmask for resizing */
-				xcb_grab_key(conn, 1, screen->root,
-						EXTRA_MODKEY,
-						keys[i].keycode,
-						XCB_GRAB_MODE_ASYNC,
-						XCB_GRAB_MODE_ASYNC);
-
-				/* grab hjkl with extended modmask for resizing */
-				xcb_grab_key(conn, 1, screen->root,
-						EXTRA_MODKEY,
-						keys[i].keycode,
-						XCB_GRAB_MODE_ASYNC,
-						XCB_GRAB_MODE_ASYNC);
 				PDEBUG("Grabbing key (%u, with keycode: %d)\n",
 					i, keys[i].keycode);
+
+			// wanted fallthrough
 			default:
 				xcb_grab_key(conn, 1, screen->root,
 						MODKEY,

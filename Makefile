@@ -2,17 +2,35 @@
 VERSION = $(shell date +%Y%m%d)
 
 ###########################################################
-CC = gcc
-LD = gcc
+
+USERCC ?= gcc
+USERLD ?= gcc
+
+CC = $(USERCC)
+LD = $(USERLD)
 
 PREFIX ?= /usr
 
 BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/man
 
-WARNINGS = -Wall -Wextra -pedantic -Wno-variadic-macros
-CFLAGS   = -std=c11 -O2 -pedantic $(WARNINGS) $(EXTRA_CFLAGS)
-LDFLAGS  = $(EXTRA_LDFLAGS)
+
+
+WARNINGS = -Wall -Wextra -pedantic -Wno-variadic-macros -Werror -Wno-unused-function
+
+ifeq ($(verbose),1)
+	EXTRA_CFLAGS += -DDEBUG
+endif
+
+ifeq ($(debug),1)
+	# dont forget about leaks XXX
+	CFLAGS  = -std=c11 -g -fsanitize=address,undefined\
+			  -fno-omit-frame-pointer -O1 $(WARNINGS) $(EXTRA_CFLAGS)
+	LDFLAGS = -fsanitize=address,undefined $(EXTRA_LDFLAGS)
+else
+	CFLAGS  = -std=c11 -O2 -pedantic $(WARNINGS) $(EXTRA_CFLAGS)
+	LDFLAGS = $(EXTRA_LDFLAGS)
+endif
 
 ###########################################################
 .SUFFIXES: .c .h .o

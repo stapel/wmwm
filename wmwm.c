@@ -304,6 +304,7 @@ static void mouse_resize(client_t *client, int rel_x, int rel_y);
 static void move_step(client_t *client, step_direction_t direction);
 
 static void set_workspace(client_t *client, uint32_t ws);
+static void move_to_workspace(client_t *client, uint32_t ws);
 static void change_workspace(uint32_t ws);
 
 static void update_shape(client_t *client);
@@ -783,6 +784,15 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 	}
 }
 
+
+void move_to_workspace(client_t *client, uint32_t ws)
+{
+	if (curws == ws)
+		return;
+	hide(client);
+	set_workspace(client, ws);
+}
+
 /*
  * set client to one or no workspace
  */
@@ -802,9 +812,11 @@ void set_workspace(client_t *client, uint32_t ws)
 	if (client->ws != WORKSPACE_NONE && focuswin(client->ws) == client)
 		set_focuswin(client->ws, NULL);
 
-	// remove old position if available
-	if (client->ws != WORKSPACE_NONE)
+	// remove old position if available, and update old tree
+	if (client->ws != WORKSPACE_NONE) {
 		wtree_remove(client->wsitem);
+		update_clues(wslist[client->ws], screen_rect());
+	}
 
 	client->ws = ws;
 
@@ -3366,43 +3378,43 @@ void handle_key_press(xcb_generic_event_t *ev)
 						toggle_tiling(fwin);
 					break;
 				case KEY_WS1:
-					set_workspace(focuswin(curws), 0);
+					move_to_workspace(focuswin(curws), 0);
 					break;
 
 				case KEY_WS2:
-					set_workspace(focuswin(curws), 1);
+					move_to_workspace(focuswin(curws), 1);
 					break;
 
 				case KEY_WS3:
-					set_workspace(focuswin(curws), 2);
+					move_to_workspace(focuswin(curws), 2);
 					break;
 
 				case KEY_WS4:
-					set_workspace(focuswin(curws), 3);
+					move_to_workspace(focuswin(curws), 3);
 					break;
 
 				case KEY_WS5:
-					set_workspace(focuswin(curws), 4);
+					move_to_workspace(focuswin(curws), 4);
 					break;
 
 				case KEY_WS6:
-					set_workspace(focuswin(curws), 5);
+					move_to_workspace(focuswin(curws), 5);
 					break;
 
 				case KEY_WS7:
-					set_workspace(focuswin(curws), 6);
+					move_to_workspace(focuswin(curws), 6);
 					break;
 
 				case KEY_WS8:
-					set_workspace(focuswin(curws), 7);
+					move_to_workspace(focuswin(curws), 7);
 					break;
 
 				case KEY_WS9:
-					set_workspace(focuswin(curws), 8);
+					move_to_workspace(focuswin(curws), 8);
 					break;
 
 				case KEY_WS10:
-					set_workspace(focuswin(curws), 9);
+					move_to_workspace(focuswin(curws), 9);
 					break;
 
 				default:

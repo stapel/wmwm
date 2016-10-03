@@ -107,11 +107,4 @@ typedef struct winconf {
 	uint16_t borderwidth;
 } winconf_t;
 
-
-/* New types for tiling-branch */
-typedef struct workspaces {
-	client_t *focuswin; /* last focused window */
-	tree_t   *root;     /* root node for workdesk */
-} workspace_t;
-
 #endif /* __WMWM__WMWM_H__ */

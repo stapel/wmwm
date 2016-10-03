@@ -420,7 +420,10 @@ void toggle_floating(client_t *client)
 	// XXX only append newly opened window to tiling node, not floating?
 	// XXX save original geometry?
 
-	wtree_toggle_floating(client->wsitem);
+	if (wtree_toggle_floating(client->wsitem) && ! client->fullscreen) {
+		// floating is on now and not fullscreened
+		update_geometry(client, &client->geometry_last);
+	}
 
 	update_clues(wslist[client->ws], screen_rect());
 	wtree_print_tree(wslist[client->ws]);

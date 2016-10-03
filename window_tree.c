@@ -22,21 +22,32 @@ static container_t* container_new()
 	return tmp;
 }
 
-static container_t* container_new_client(client_t *client)
+static container_t* container_new_workspace(xcb_rectangle_t geo)
 {
-	container_t *tmp = calloc(1, sizeof(container_t));
+	container_t *tmp = container_new();
+	if (tmp == NULL) return NULL;
+	tmp->type = CONTAINER_WORKSPACE;
+	tmp->sgeo = geo;
+	return tmp;
+}
+
+static container_t* container_new_client(client_t *client, bool floating)
+{
+	container_t *tmp = container_new();
 	if (tmp == NULL) return NULL;
 	tmp->type = CONTAINER_CLIENT;
 	tmp->client = client;
+	tmp->floating = floating;
 	return tmp;
 }
 
 static container_t* container_new_tiling(tiling_t tile)
 {
-	container_t *tmp = calloc(1, sizeof(container_t));
+	container_t *tmp = container_new();
 	if (tmp == NULL) return NULL;
 	tmp->type = CONTAINER_TILING;
 	tmp->tile = tile;
+//	tmp->tgeo = geo;
 	tmp->tiles = 0;
 	return tmp;
 }
@@ -46,40 +57,15 @@ static container_t* wtree_data(wtree_t *node)
 	return ((container_t*)(node->data));
 }
 
-/* increase count of clients in node */
-static void wtree_plus(wtree_t *node)
-{
-	++(wtree_data(node)->tiles);
-	PDEBUG("node+: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
-}
-
-static void wtree_minus(wtree_t *node)
-{
-	assert(wtree_data(node)->tiles != 0);
-	--(wtree_data(node)->tiles);
-	PDEBUG("node-: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
-}
-
 /***************************************************************/
 // memory handling functions
 
-
-// only child
-bool wtree_is_singleton(wtree_t* child)
-{
-	assert(child != NULL);
-	assert(child->parent != NULL);
-
-	return (child->parent->child == child && child->next == NULL);
-}
-
-
 // client constructor
-wtree_t* wtree_new_client(client_t *client)
+wtree_t* wtree_new_client(client_t *client, bool floating)
 {
 	wtree_t *tmp;
 	container_t *cont;
-	if ((cont = container_new_client(client)) == NULL)
+	if ((cont = container_new_client(client, floating)) == NULL)
 		return NULL;
 	tmp = tree_new(NULL, NULL, NULL, NULL, cont);
 	return tmp;
@@ -92,8 +78,17 @@ wtree_t* wtree_new_tiling(tiling_t tile)
 	container_t *cont;
 	if ((cont = container_new_tiling(tile)) == NULL)
 		return NULL;
-	cont->type = CONTAINER_TILING;
-	cont->tile = tile;
+	tmp = tree_new(NULL, NULL, NULL, NULL, cont);
+	return tmp;
+}
+
+// workspace node constructor
+wtree_t* wtree_new_workspace(xcb_rectangle_t geo)
+{
+	wtree_t *tmp;
+	container_t *cont;
+	if ((cont = container_new_workspace(geo)) == NULL)
+		return NULL;
 	tmp = tree_new(NULL, NULL, NULL, NULL, cont);
 	return tmp;
 }
@@ -111,12 +106,6 @@ void wtree_free(wtree_t *node)
 /*******************************************************/
 // container handling functions
 
-// return client of node
-client_t *wtree_client(wtree_t *node)
-{
-	return wtree_data(node)->client;
-}
-
 // is node a client node
 bool wtree_is_client(wtree_t *node)
 {
@@ -131,8 +120,58 @@ bool wtree_is_tiling(wtree_t *node)
 	return (wtree_data(node)->type == CONTAINER_TILING);
 }
 
+// is node a workspace node
+bool wtree_is_workspace(wtree_t *node)
+{
+	assert(node != NULL);
+	return (wtree_data(node)->type == CONTAINER_WORKSPACE);
+}
+
+/* WORKSPACE NODE FUNCTIONS ****************************************/
+client_t *wtree_focuswin(wtree_t *node)
+{
+	return wtree_data(node)->focuswin;
+}
+void wtree_set_focuswin(wtree_t *node, client_t* client)
+{
+	wtree_data(node)->focuswin = client;
+}
+
+xcb_rectangle_t wtree_screen_geo(wtree_t *node)
+{
+	return wtree_data(node)->sgeo;
+}
+void wtree_set_screen_geo(wtree_t *node, xcb_rectangle_t geo)
+{
+	wtree_data(node)->sgeo = geo;
+}
+
+/* TILING NODE FUNCTIONS *******************************************/
+
+/* change count of clients in node */
+static void wtree_plus(wtree_t *node)
+{
+	++(wtree_data(node)->tiles);
+	PDEBUG("node+: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
+	if (wtree_data(node)->tiles == 1 && ! wtree_is_workspace(node->parent)) {
+		// We now got a tile in here, tell parent
+		wtree_plus(node->parent);
+	}
+}
+
+static void wtree_minus(wtree_t *node)
+{
+	assert(wtree_data(node)->tiles != 0);
+	--(wtree_data(node)->tiles);
+	PDEBUG("node-: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
+	if (wtree_data(node)->tiles == 0 && !wtree_is_workspace(node->parent)) {
+		// We now haven't any tiles left, update parent
+		wtree_minus(node->parent);
+	}
+}
+
 // return number of children
-uint16_t wtree_get_tiles(wtree_t *node)
+uint16_t wtree_tiles(wtree_t *node)
 {
 	return wtree_data(node)->tiles;
 }
@@ -142,7 +181,41 @@ tiling_t wtree_tiling(wtree_t *node)
 {
 	assert(node != NULL);
 	return wtree_data(node)->tile;
+}
 
+// set tiling mode
+void wtree_set_tiling(wtree_t *node, tiling_t tiling)
+{
+	assert(node != NULL);
+	wtree_data(node)->tile = tiling;
+}
+
+/* CLIENT NODE FUNCTIONS *******************************************/
+
+// return client of node
+client_t *wtree_client(wtree_t *node)
+{
+	return wtree_data(node)->client;
+}
+
+bool wtree_is_floating(wtree_t *node)
+{
+	return wtree_data(node)->floating;
+}
+
+// toggle floating, return new state
+bool wtree_toggle_floating(wtree_t *node)
+{
+	bool floats = ! wtree_data(node)->floating;
+	wtree_data(node)->floating = floats;
+
+	// update number of nodes participating in tiling
+	if (floats)
+		wtree_minus(node->parent);
+	else
+		wtree_plus(node->parent);
+
+	return floats;
 }
 
 // tiling of parent
@@ -154,21 +227,13 @@ tiling_t wtree_parent_tiling(wtree_t *node)
 	return wtree_data(node->parent)->tile;
 }
 
-// set tiling mode
-void wtree_set_tiling(wtree_t *node, tiling_t tiling)
-{
-	assert(node != NULL);
-	wtree_data(node)->tile = tiling;
-}
-
 void wtree_set_parent_tiling(wtree_t *node, tiling_t tiling)
 {
 	assert(node != NULL);
 	assert(node->parent != NULL);
-	wtree_data(node->parent)->tile = tiling;
+
+	wtree_set_tiling(node->parent, tiling);
 }
-
-
 
 /*************************************************************/
 // node action functions
@@ -177,42 +242,24 @@ void wtree_set_parent_tiling(wtree_t *node, tiling_t tiling)
 void wtree_add_sibling(wtree_t *current, wtree_t *node)
 {
 	tree_add(current, node);
-	wtree_plus(node->parent);
-}
-
-// append sibling node to current
-void wtree_append_sibling(wtree_t *current, wtree_t *node)
-{
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((current->next != current->prev) || current->next == NULL);
-
-	while (current->next != NULL)
-		current = current->next;
-
-	tree_add(current, node);
-	wtree_plus(node->parent);
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((current->next != current->prev) || current->next == NULL);
+	if (wtree_is_client(node) && ! wtree_data(node)->floating)
+		wtree_plus(node->parent);
 }
 
 // append child node to parent
 void wtree_append_child(wtree_t *parent, wtree_t *node)
 {
-	assert(wtree_is_tiling(parent));
-
+	node->parent = parent;
 	// other vars
-	// XXX: Make sure no struct-member is forgotten
 	if (parent->child == NULL) {
 		parent->child = node;
-		wtree_plus(parent);
-	} else
-		wtree_append_sibling(parent->child, node);
-	node->parent = parent;
-
-	assert((node->next != node->prev) || node->next == NULL);
-	assert((parent->next != parent->prev) || parent->next == NULL);
+		if (wtree_is_client(node) && ! wtree_data(node)->floating)
+			wtree_plus(parent);
+	} else {
+		wtree_t *sib = parent->child;
+		while (sib->next) sib = sib->next;
+		wtree_add_sibling(sib, node);
+	}
 }
 
 // interject tiler between client and client->parent
@@ -221,8 +268,14 @@ void wtree_inter_tile(wtree_t *client, tiling_t mode)
 {
 	wtree_t *tiler = wtree_new_tiling(mode);
 
-	// replace client with tiler
-	tree_replace(client, tiler);
+	// update parents count if needed
+	// because append_child will + it XXX
+	if (wtree_tiles(client->parent) > 0) {
+		tree_replace(client, tiler);
+		wtree_minus(tiler->parent);
+	} else {
+		tree_replace(client, tiler);
+	}
 	// add client to tiler
 	wtree_append_child(tiler, client);
 }
@@ -234,29 +287,24 @@ void wtree_add_tile_sibling(wtree_t *current, wtree_t *node,
 		tiling_t tiling)
 {
 	wtree_t *tiler = wtree_new_tiling(tiling);
-	// add node to tiler
-	wtree_append_child(tiler, node);
 	// add tiler as sibling to current
 	wtree_add_sibling(current, tiler);
-
-	if (tiling == TILING_FLOATING) // XXX dirty
-		wtree_minus(current->parent);
+	// add node to tiler
+	wtree_append_child(tiler, node);
 }
 
 void wtree_append_tile_child(wtree_t *parent, wtree_t *node,
 		tiling_t tiling)
 {
 	wtree_t *tiler = wtree_new_tiling(tiling);
+	// add tiler as sibling to current
+	PDEBUG("--1--\n");
+	wtree_append_child(parent, tiler);
+	PDEBUG("--2--\n");
 	// add node to tiler
 	wtree_append_child(tiler, node);
-	// add tiler as sibling to current
-	wtree_append_child(parent, tiler);
-
-	if (tiling == TILING_FLOATING) // XXX dirty
-		wtree_minus(parent);
+	PDEBUG("--3--\n");
 }
-
-
 
 /* unlink node from tree, no children handling */
 void wtree_remove(wtree_t *node)
@@ -270,45 +318,23 @@ void wtree_remove(wtree_t *node)
 	// update parent node
 	if (parent && wtree_is_tiling(parent)) {
 		// decrement child counter
-		if (wtree_tiling(parent) != TILING_FLOATING) // XXX hack
-			if (!wtree_is_tiling(node) || (wtree_is_tiling(node) && wtree_tiling(node) != TILING_FLOATING))
-				wtree_minus(parent);
+		if (wtree_is_client(node) && ! wtree_data(node)->floating)
+			wtree_minus(parent);
 		// in case of non-root-parent tile, remove it
-		if (tree_child(parent) == NULL && tree_parent(parent)) {
+		if (tree_child(parent) == NULL) {
 			wtree_remove(parent);
 			wtree_free(parent);
 		}
 	}
 }
 
-#if 0
-void tree_show_node(char* str, tree_t *node)
-{
-	if (node == NULL)
-		fprintf(stderr, "(%s) node: %p\n", str, NULL);
-	else {
-		fprintf(stderr, "(%s) node: %p\n - parent: %p\n - child: %p\n - prev: %p\n - next: %p\n",
-			str, node, node->parent, node->child, node->prev, node->next);
-	}
-}
-#endif
-
-#if 0
 wtree_t *wtree_next(wtree_t *node)
 {
-	// allways tiling
-	if (node->child)
-		return (wtree_next(node->child));
-
-	if (node->next) {
-		if(wtree_is_tiling(node->next))
-			return (wtree_next(node->next));
-		if (wtree_is_client(node->next))
-			return node->next;
-	}
+	do {
+		node = tree_walk_down_right(node);
+	} while (node != NULL && ! wtree_is_client(node));
 	return node;
 }
-#endif
 
 // recursive general function to apply _action_ on each client beneath client
 // *pre-order*
@@ -365,19 +391,24 @@ static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 			case TILING_HORIZONTAL:
 				snprintf(num, 10, "H%d", *i);
 				break;
-			case TILING_FLOATING:
-				snprintf(num, 10, "F%d", *i);
-				break;
 			default:
 				snprintf(num, 10, "X%d", *i);
 				break;
 		}
 		fprintf(file, "%"PRIuPTR" [label=\"%s (%d)\" shape=triangle];\n",
-				(uintptr_t)cur, num, wtree_get_tiles(cur));
+				(uintptr_t)cur, num, wtree_tiles(cur));
+	} else if (wtree_is_workspace(cur)) {
+		snprintf(num, 10, "root");
+		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=box];\n",
+				(uintptr_t)cur, num);
 	} else {
 		snprintf(num, 10, "%d", *i);
-		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=circle];\n",
-			   	(uintptr_t)cur, num);
+		if (wtree_is_floating(cur))
+			fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=doublecircle];\n",
+				   	(uintptr_t)cur, num);
+		else
+			fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=circle];\n",
+				   	(uintptr_t)cur, num);
 	}
 
 	if (cur->parent) {

@@ -167,12 +167,13 @@ wm_mode_t MCWM_mode = mode_nothing;		/* Internal mode, such as move or resize */
 
 
 tiling_t tiling_mode = DEFAULT_TILING_MODE; /* global tiling mode */
+bool floating_mode = false; /* global floating mode, overrides tiling_mode */
 
 /*
  * Workspace list: Every workspace has a list of all visible
  * windows.
  */
-workspace_t wslist[WORKSPACES];
+wtree_t *wslist[WORKSPACES];
 
 /* Shortcut key type and initialization. */
 struct keys {
@@ -418,42 +419,10 @@ void toggle_floating(client_t *client)
 	// XXX only append newly opened window to tiling node, not floating?
 	// XXX save original geometry?
 
-	if (wtree_is_singleton(client->wsitem)) {
-		// only child, replace parent container
-		switch (wtree_parent_tiling(client->wsitem)) {
-			case TILING_FLOATING:
-				if (client->wsitem->parent->parent)
-				{
-					// parent is not root, woot
-				} else {
+	wtree_toggle_floating(client->wsitem);
 
-					wtree_set_parent_tiling(client->wsitem,
-									DEFAULT_TILING_MODE);
-				}
-				break;
-			case TILING_HORIZONTAL:
-			case TILING_VERTICAL:
-				wtree_set_parent_tiling(client->wsitem, TILING_FLOATING);
-				break;
-		}
-	} else {
-		switch (wtree_parent_tiling(client->wsitem)) {
-			case TILING_HORIZONTAL:
-			case TILING_VERTICAL:
-				// replace current node with floating node
-				wtree_inter_tile(client->wsitem, TILING_FLOATING);
-				break;
-			case TILING_FLOATING:
-				// XXX this should never happen, don't add siblings to floats
-				// XXX why not?
-				assert(false);
-				break;
-		}
-
-	}
-
-	update_clues(wslist[client->ws].root, screen_rect());
-	wtree_print_tree(wslist[client->ws].root);
+	update_clues(wslist[client->ws], screen_rect());
+	wtree_print_tree(wslist[client->ws]);
 
 	if (client == NULL)
 		return;
@@ -472,31 +441,26 @@ void toggle_tiling(client_t *client)
 			wtree_set_parent_tiling(client->wsitem, TILING_HORIZONTAL);
 			// XXX tiling, store geometry in tiling nodes
 			// so I only need to update children
-			update_clues(wslist[client->ws].root, screen_rect());
-			wtree_print_tree(wslist[client->ws].root);
 			break;
 		case TILING_HORIZONTAL:
-		case TILING_FLOATING:
 			wtree_set_parent_tiling(client->wsitem, TILING_VERTICAL);
 			// XXX tiling, store geometry in tiling nodes
-			update_clues(wslist[client->ws].root, screen_rect());
-			wtree_print_tree(wslist[client->ws].root);
 			break;
 	}
+	update_clues(wslist[client->ws], screen_rect());
+	wtree_print_tree(wslist[client->ws]);
 }
 
 void setup_workspaces()
 {
-	for (uint32_t i = 0; i < WORKSPACES; i++) {
-		wslist[i].focuswin = NULL;
-		wslist[i].root = wtree_new_tiling(tiling_mode);
-	}
+	for (uint32_t i = 0; i < WORKSPACES; i++)
+		wslist[i] = wtree_new_workspace(screen_rect());
 }
 
 client_t *focuswin(uint32_t ws)
 {
 	assert(ws < WORKSPACES);
-	return wslist[ws].focuswin;
+	return wtree_focuswin(wslist[ws]);
 }
 
 
@@ -514,7 +478,7 @@ void show_node(char* str, wtree_t *node)
 void set_focuswin(uint32_t ws, client_t* client)
 {
 	assert(ws < WORKSPACES);
-	wslist[ws].focuswin = client;
+	wtree_set_focuswin(wslist[ws], client);
 }
 
 /**********************************************************************/
@@ -771,12 +735,15 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 
 	// XXX tiling: borderwidth and gap width
 
+	// root node
+	if (wtree_is_workspace(node)) {
+		update_clues(node->child, rect);
+		return;
+	}
+
 	if (wtree_is_tiling(node)) {
-	   	if (wtree_tiling(node) == TILING_FLOATING)
-			// Floating nodes are not handled, neither are their children
-			return;
 		xcb_rectangle_t tmp = rect;
-		int tiles = wtree_get_tiles(node);
+		int tiles = wtree_tiles(node);
 
 		// fix position for the tiling container
 		if (node->prev && node->parent) {
@@ -796,10 +763,6 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		update_clues(node->child, tmp);
 	}
 
-	// root node
-	if (node->parent == NULL)
-		return;
-
 	if (node->prev) {
 		if (wtree_parent_tiling(node) == TILING_VERTICAL)
 			rect.x += rect.width;
@@ -808,7 +771,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 	}
 	update_clues(node->next, rect);
 
-	if (wtree_is_client(node)) {
+	if (wtree_is_client(node) && ! wtree_is_floating(node)) {
 		int gaps = conf.borderwidth + conf.gapwidth;
 
 		rect.x += gaps;
@@ -816,7 +779,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		rect.width  -= gaps * 2;
 		rect.height -= gaps * 2;
 
-		update_geometry((client_t*)wtree_client(node), &rect);
+		update_geometry(wtree_client(node), &rect);
 	}
 }
 
@@ -825,7 +788,9 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
  */
 void set_workspace(client_t *client, uint32_t ws)
 {
-	assert(client != NULL);
+	if (client == NULL)
+		return;
+
 	assert((ws < WORKSPACES) || (ws == WORKSPACE_NONE));
 
 	PDEBUG("set workspace for 0x%x to %u\n", client->id, ws);
@@ -835,82 +800,62 @@ void set_workspace(client_t *client, uint32_t ws)
 
 	/* Is it currently on any workspace */
 	if (client->ws != WORKSPACE_NONE && focuswin(client->ws) == client)
-			set_focuswin(client->ws, NULL);
+		set_focuswin(client->ws, NULL);
+
+	// remove old position if available
+	if (client->ws != WORKSPACE_NONE)
+		wtree_remove(client->wsitem);
 
 	client->ws = ws;
 
-	if (ws == WORKSPACE_NONE) {
-		wtree_remove(client->wsitem);
-		// should it be freed? XXX
+	if (ws == WORKSPACE_NONE)
 		return;
-	}
-
-	// XXX hack
-	if (focuswin(client->ws) &&
-			wtree_parent_tiling(focuswin(client->ws)->wsitem)
-				== TILING_FLOATING)
-		set_focuswin(client->ws, NULL);
 
 	/* new workspace to be added to */
 	/* Is there a focused window we can add to ? */
 
 	wtree_t *node = client->wsitem;
+	client_t *focus = focuswin(ws);
 
-	if (focuswin(ws) != NULL) {
-		/* We have a window to attach to */
-		if (tiling_mode == TILING_FLOATING) {
-			// add single floating-tile
-			wtree_add_tile_sibling(focuswin(ws)->wsitem, node, tiling_mode);
+	if (focus == NULL) {
+		PDEBUG("setws: no focuswin\n");
+		/* no active window, attach to root */
+		if (wslist[ws]->child == NULL) {
+			PDEBUG("setws: > no children on root\n");
+			wtree_append_tile_child(wslist[ws], node, tiling_mode);
 		} else {
-			if (wtree_parent_tiling(focuswin(ws)->wsitem) == TILING_FLOATING) {
-				// parent is tiling node, add sibling
-				abort();
-			}
-			// no floating shit
-			if (wtree_parent_tiling(focuswin(ws)->wsitem) != tiling_mode) {
-				/* different tiling mode */
-				if (wtree_is_singleton(focuswin(ws)->wsitem)) {
-					// different tiling mode focuswin is only child
-					// change tiling mode
-					wtree_set_tiling(focuswin(ws)->wsitem->parent, tiling_mode);
-					wtree_add_sibling(focuswin(ws)->wsitem, node);
-				} else {
-					wtree_inter_tile(focuswin(ws)->wsitem, tiling_mode);
-					wtree_add_sibling(focuswin(ws)->wsitem, node);
-				}
+			PDEBUG("setws: > children on root\n");
+			if (wtree_tiling(wslist[ws]->child) == tiling_mode) {
+				PDEBUG("setws: >> same tiling\n");
+				wtree_append_child(wslist[ws]->child, node);
 			} else {
-				/* same tiling mode, add after focuswin */
-				wtree_add_sibling(focuswin(ws)->wsitem, node);
+				PDEBUG("setws: >> different tiling\n");
+				wtree_append_tile_child(wslist[ws]->child, node, tiling_mode);
+				// XXX this is wrong, make it like XXX1:
 			}
 		}
 	} else {
-		/* no active window, attach to root */
-		if (tiling_mode == TILING_FLOATING) {
-			// tiling node is always alone :(
-			wtree_append_tile_child(wslist[ws].root, node, tiling_mode);
-		} else {
-			if (wslist[ws].root->child == NULL) {
-				/* root has no children, add appropriately tiled */
-				if (wtree_tiling(wslist[ws].root) != tiling_mode)
-					wtree_set_tiling(wslist[ws].root, tiling_mode);
-				wtree_append_child(wslist[ws].root, node);
+		PDEBUG("setws: focuswin\n");
+		/* attach to active window */
+		if (wtree_parent_tiling(focus->wsitem) == tiling_mode)
+			wtree_add_sibling(focus->wsitem, node);
+		else {
+			// XXX1:
+			if (focus->wsitem->next == NULL && focus->wsitem->prev == NULL) {
+				// singleton, replace prior tiling-mode
+				wtree_set_parent_tiling(focus->wsitem, tiling_mode);
 			} else {
-				/* there is a child on root, just add sibling */
-				if (wtree_tiling(wslist[ws].root) != tiling_mode) {
-					/* different orientation */
-					wtree_append_tile_child(wslist[ws].root, node, tiling_mode);
-				} else {
-					wtree_add_sibling(wslist[ws].root->child, node);
-				}
+				wtree_inter_tile(focus->wsitem, tiling_mode);
 			}
+			wtree_add_sibling(focus->wsitem, node);
 		}
 	}
 	/* Set _NET_WM_DESKTOP accordingly or leave it  */
 	xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
 
 	// fixup geometries
-	update_clues(wslist[ws].root, screen_rect());
-	wtree_print_tree(wslist[ws].root);
+	update_clues(wslist[ws], screen_rect());
+	wtree_print_tree(wslist[ws]);
 
 	xcb_flush(conn);
 }
@@ -932,10 +877,10 @@ void change_workspace(uint32_t ws)
 		unset_focus();
 
 	/* Apply hidden window event mask, this ensures no invalid enter events */
-	wtree_traverse_clients(wslist[curws].root, &set_hidden_events);
+	wtree_traverse_clients(wslist[curws], &set_hidden_events);
 
 	/* Go through list of current ws. Unmap everything that isn't fixed. */
-	wtree_traverse_clients(wslist[curws].root, &hide);
+	wtree_traverse_clients(wslist[curws], &hide);
 
 	/* Set the new current workspace */
 	xcb_ewmh_set_current_desktop(ewmh, screen_number, ws);
@@ -943,10 +888,10 @@ void change_workspace(uint32_t ws)
 	curws = ws;
 
 	/* Go through list of new ws and map everything */
-	wtree_traverse_clients(wslist[curws].root, &show);
+	wtree_traverse_clients(wslist[curws], &show);
 
 	/* Re-enable enter events */
-	wtree_traverse_clients(wslist[curws].root, &set_default_events);
+	wtree_traverse_clients(wslist[curws], &set_default_events);
 
 	/* Map the windows now */
 	xcb_flush(conn);
@@ -1009,7 +954,7 @@ int update_geometry(client_t *client,
 	/* XXX: check if geometry or monitor geometry changed (or hints, maybe set a geo changed flag) */
 
 	// or fullscreen ? XXX: some hints?
-	if (wtree_parent_tiling(client->wsitem) != TILING_FLOATING)
+	if (! wtree_is_floating(client->wsitem))
 		goto out;
 
 	/* Fullscreen, skip the checks  */
@@ -1379,7 +1324,7 @@ client_t *create_client(xcb_window_t win)
 	client->colormap = screen->default_colormap;
 
 	client->ws = WORKSPACE_NONE;
-	client->wsitem = wtree_new_client(client);
+	client->wsitem = wtree_new_client(client, floating_mode);
 
 	PDEBUG("Adding window 0x%x\n", client->id);
 
@@ -1501,6 +1446,26 @@ bool setup_keys(void)
 		switch (i) {
 			case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN:
 			case KEY_TILING: case KEY_FLOATING:
+
+			// move to workspace
+			case KEY_WS1: case KEY_WS2: case KEY_WS3: case KEY_WS4:
+			case KEY_WS5: case KEY_WS6: case KEY_WS7: case KEY_WS8:
+			case KEY_WS9: case KEY_WS10:
+
+				/* grab hjkl with extended modmask for resizing */
+				xcb_grab_key(conn, 1, screen->root,
+						EXTRA_MODKEY,
+						keys[i].keycode,
+						XCB_GRAB_MODE_ASYNC,
+						XCB_GRAB_MODE_ASYNC);
+
+				/* grab hjkl with extended modmask for resizing */
+				xcb_grab_key(conn, 1, screen->root,
+						EXTRA_MODKEY,
+						keys[i].keycode,
+						XCB_GRAB_MODE_ASYNC,
+						XCB_GRAB_MODE_ASYNC);
+
 				/* grab hjkl with extended modmask for resizing */
 				xcb_grab_key(conn, 1, screen->root,
 						EXTRA_MODKEY,
@@ -2104,9 +2069,9 @@ void raise_client(client_t *client)
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
 	assert(client != NULL);
 	// only raise floats
-	assert(client != NULL);
-	if (wtree_parent_tiling(client->wsitem) == TILING_FLOATING)
-		xcb_configure_window(conn, client->frame, XCB_CONFIG_WINDOW_STACK_MODE, values);
+	if (wtree_is_floating(client->wsitem))
+		xcb_configure_window(conn, client->frame,
+				XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
 
 /*
@@ -2120,7 +2085,7 @@ void raise_or_lower_client(client_t *client)
 	assert(client != NULL);
 
 	// only raise floats
-	if (! client || wtree_parent_tiling(client->wsitem) != TILING_FLOATING)
+	if (! client || ! wtree_is_floating(client->wsitem))
 		return;
 
 	win = client->frame;
@@ -2237,7 +2202,7 @@ client_t *find_clientp(xcb_drawable_t win)
 
 	/* check current workspace first */
 	client_t *client =
-		wtree_find_client(wslist[curws].root, &find_clientp_helper, &win);
+		wtree_find_client(wslist[curws], &find_clientp_helper, &win);
 
 	if (client)
 		return client;
@@ -2246,7 +2211,7 @@ client_t *find_clientp(xcb_drawable_t win)
 		if (i == curws)
 			continue;
 
-		client = wtree_find_client(wslist[i].root, &find_clientp_helper, &win);
+		client = wtree_find_client(wslist[i], &find_clientp_helper, &win);
 		if (client)
 			return client;
 	}
@@ -2269,7 +2234,7 @@ client_t *find_client(xcb_drawable_t win)
 
 	/* XXX: focuswin */
 	/* check current workspace first */
-	client_t *client = wtree_find_client(wslist[curws].root, &find_client_helper, &win);
+	client_t *client = wtree_find_client(wslist[curws], &find_client_helper, &win);
 	if (client)
 		return client;
 
@@ -2277,7 +2242,7 @@ client_t *find_client(xcb_drawable_t win)
 		if (i == curws)
 			continue;
 
-		client = wtree_find_client(wslist[i].root, &find_client_helper, &win);
+		client = wtree_find_client(wslist[i], &find_client_helper, &win);
 		if (client)
 			return client;
 	}
@@ -2308,7 +2273,6 @@ void set_focus(client_t *client)
 			set_focuswin(curws, NULL);
 			ewmh_update_state(client);
 		}
-
 		return;
 	}
 
@@ -2398,7 +2362,7 @@ void resize_step(client_t *client, step_direction_t direction)
 	xcb_rectangle_t geometry = client->geometry;
 
 	/* XXX tiling: fullscreen */
-	if (client->fullscreen || wtree_parent_tiling(client->wsitem) != TILING_FLOATING ) {
+	if (client->fullscreen || ! wtree_is_floating(client->wsitem)) {
 		/* Can't resize a fully maximized window. */
 		return;
 	}
@@ -2486,7 +2450,7 @@ void move_step(client_t *client, step_direction_t direction)
 
 	xcb_rectangle_t geo = client->geometry;
 
-	if (client->fullscreen || wtree_parent_tiling(client->wsitem) != TILING_FLOATING) {
+	if (client->fullscreen || ! wtree_is_floating(client->wsitem)) {
 		/* We can't move a fully maximized window. */
 		return;
 	}
@@ -2586,8 +2550,9 @@ void toggle_fullscreen(client_t *client)
 	if (! client)
 	   return;
 
-	client->fullscreen = false;
-	return;
+	// XXX: for now only fullscreen for floats
+//	if (! wtree_is_floating(client->wsitem))
+//		return;
 
 	xcb_rectangle_t monitor;
 	get_monitor_geometry(client->monitor, &monitor);
@@ -2746,8 +2711,8 @@ void erase_client(client_t *client)
 	destroy(client);
 	ewmh_update_client_list();
 
-	update_clues(wslist[cws].root, screen_rect());
-	wtree_print_tree(wslist[cws].root);
+	update_clues(wslist[cws], screen_rect());
+	wtree_print_tree(wslist[cws]);
 }
 
 /*
@@ -2841,7 +2806,7 @@ void warp_focuswin(step_direction_t direction)
 	int16_t pointy;
 
 	if (! focuswin(curws) || focuswin(curws)->fullscreen
-			|| wtree_parent_tiling(focuswin(curws)->wsitem) != TILING_FLOATING)
+			|| ! wtree_is_floating(focuswin(curws)->wsitem))
 		return;
 
 	xcb_rectangle_t mon;
@@ -3234,7 +3199,7 @@ void handle_button_press(xcb_generic_event_t* ev)
 	raise_client(focuswin(curws));
 
 	// if it's a non floating window, just return
-	if (wtree_parent_tiling(focuswin(curws)->wsitem) != TILING_FLOATING)
+	if (! wtree_is_floating(focuswin(curws)->wsitem))
 		return;
 
 	switch (e->detail) {
@@ -3399,6 +3364,46 @@ void handle_key_press(xcb_generic_event_t *ev)
 					if (fwin)
 						toggle_tiling(fwin);
 					break;
+				case KEY_WS1:
+					set_workspace(focuswin(curws), 0);
+					break;
+
+				case KEY_WS2:
+					set_workspace(focuswin(curws), 1);
+					break;
+
+				case KEY_WS3:
+					set_workspace(focuswin(curws), 2);
+					break;
+
+				case KEY_WS4:
+					set_workspace(focuswin(curws), 3);
+					break;
+
+				case KEY_WS5:
+					set_workspace(focuswin(curws), 4);
+					break;
+
+				case KEY_WS6:
+					set_workspace(focuswin(curws), 5);
+					break;
+
+				case KEY_WS7:
+					set_workspace(focuswin(curws), 6);
+					break;
+
+				case KEY_WS8:
+					set_workspace(focuswin(curws), 7);
+					break;
+
+				case KEY_WS9:
+					set_workspace(focuswin(curws), 8);
+					break;
+
+				case KEY_WS10:
+					set_workspace(focuswin(curws), 9);
+					break;
+
 				default:
 					break;
 			}
@@ -3408,7 +3413,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 		case MODKEY:
 			switch (key) {
 				case KEY_NEXT:			/* tab */
-//					focus_next(); // XXX: tiling
+					focus_next(); // XXX: tiling
 					break;
 
 				case KEY_TERMINAL:		/* return */
@@ -3436,24 +3441,19 @@ void handle_key_press(xcb_generic_event_t *ev)
 					break;
 
 				case KEY_TILING:	/* v */
-					switch (tiling_mode) {
-						case TILING_FLOATING:
-							tiling_mode = DEFAULT_TILING_MODE;
-							break;
-						case TILING_VERTICAL:
-							tiling_mode = TILING_HORIZONTAL;
-							break;
-						case TILING_HORIZONTAL:
-							tiling_mode = TILING_VERTICAL;
-							break;
-					}
-					break;
-
+					if (! floating_mode) {
+						switch (tiling_mode) {
+							case TILING_VERTICAL:
+								tiling_mode = TILING_HORIZONTAL;
+								break;
+							case TILING_HORIZONTAL:
+								tiling_mode = TILING_VERTICAL;
+								break;
+						}
+						break;
+					} // intentional fall-through
 				case KEY_FLOATING:	/* f */
-					if (tiling_mode == TILING_FLOATING)
-						tiling_mode = DEFAULT_TILING_MODE;
-					else
-						tiling_mode = TILING_FLOATING;
+					floating_mode = !floating_mode;
 					break;
 
 				case KEY_RAISE_LOWER:		/* r */
@@ -4227,6 +4227,21 @@ int main(int argc, char **argv)
 	/* Die gracefully. */
 	cleanup(sigcode);
 }
+
+void focus_next()
+{
+	wtree_t *node = NULL;
+
+	if (focuswin(curws))
+		node = wtree_next(focuswin(curws)->wsitem);
+
+	if (node == NULL)
+		node = wtree_next(wslist[curws]);
+
+	if (node)
+		set_focus(wtree_client(node));
+}
+
 
 void set_input_focus(xcb_window_t win)
 {

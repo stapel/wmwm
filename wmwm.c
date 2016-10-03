@@ -2746,8 +2746,8 @@ void attach_frame(client_t *client)
 		| XCB_CW_EVENT_MASK;
 
 	uint32_t values[4] = {
-		conf.unfocuscol,
 		0ul,
+		conf.unfocuscol,
 		1,
 		HIDDEN_FRAME_EVENTS
 	};

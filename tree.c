@@ -94,3 +94,30 @@ void tree_extract(tree_t *node)
 	node->prev 	 = NULL;
 	node->parent = NULL;
 }
+
+
+tree_t *tree_walk_up_left(tree_t *node)
+{
+	if (node->parent == NULL)
+		return NULL;
+
+	if (node->parent->next)
+		return node->parent->next;
+	return tree_walk_up_left(node->parent);
+}
+
+// Labyrinth-walk, go down, keep on the left wall
+tree_t *tree_walk_down_right(tree_t *node)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (node->child)
+		return node->child;
+
+	if (node->next)
+		return node->next;
+
+	return tree_walk_up_left(node);
+
+}

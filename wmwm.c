@@ -763,7 +763,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		update_clues(node->child, tmp);
 	}
 
-	if (node->prev) {
+	if (node->prev && ! wtree_is_floating(node)) {
 		if (wtree_parent_tiling(node) == TILING_VERTICAL)
 			rect.x += rect.width;
 		else if (wtree_parent_tiling(node) == TILING_HORIZONTAL)

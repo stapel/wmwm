@@ -36,6 +36,7 @@ endif
 .SUFFIXES: .c .h .o
 .PHONY: all depend force clean install uninstall dist
 
+.NOTPARALLEL: clean all
 ###########################################################
 #SRC=$(wildcard *.c)
 SRC  = wmwm.c hidden.c list.c tree.c window_tree.c

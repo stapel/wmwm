@@ -742,17 +742,12 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		return;
 	}
 
-	if (wtree_is_tiling(node)) {
+	if (wtree_is_tiling(node) && wtree_tiles(node) > 0) {
+		// tiling node with actual tiles
+
 		xcb_rectangle_t tmp = rect;
 		int tiles = wtree_tiles(node);
 
-		// fix position for the tiling container
-		if (node->prev && node->parent) {
-			if (wtree_parent_tiling(node) == TILING_VERTICAL)
-				tmp.x += rect.width;
-			if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
-				tmp.y += rect.height;
-		}
 		// fix width of the tiling container if there's more than one child
 		if (tiles > 1) {
 			if (wtree_tiling(node) == TILING_VERTICAL)
@@ -762,28 +757,29 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		}
 		// jump to the clients
 		update_clues(node->child, tmp);
-	}
+	} else if (wtree_is_client(node) && ! wtree_is_floating(node)) {
+		int gaps = conf.borderwidth + conf.gapwidth;
+		xcb_rectangle_t tmp = rect;
 
-	// XXX HERE TO WORK NEXT
-	// this logic is flawed in case prev is floating
-	if (node->prev && ! (wtree_is_client(node) && wtree_is_floating(node))) {
-		if (wtree_parent_tiling(node) == TILING_VERTICAL)
-			rect.x += rect.width;
-		else if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
+		tmp.x += gaps;
+		tmp.y += gaps;
+		assert(tmp.width  > gaps * 2); assert(tmp.height > gaps * 2); // XXX
+		tmp.width  -= gaps * 2;
+		tmp.height -= gaps * 2;
+
+		update_geometry(wtree_client(node), &tmp);
+	} else {
+		update_clues(node->next, rect);
+		return;
+	}
+	// only either non-floating nodes or tiling-nodes with non-floating nodes get here
+	if (wtree_is_tiling(node->parent)) {
+		if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
 			rect.y += rect.height;
+		else if (wtree_parent_tiling(node) == TILING_VERTICAL)
+			rect.x += rect.width;
 	}
 	update_clues(node->next, rect);
-
-	if (wtree_is_client(node) && ! wtree_is_floating(node)) {
-		int gaps = conf.borderwidth + conf.gapwidth;
-
-		rect.x += gaps;
-		rect.y += gaps;
-		rect.width  -= gaps * 2;
-		rect.height -= gaps * 2;
-
-		update_geometry(wtree_client(node), &rect);
-	}
 }
 
 

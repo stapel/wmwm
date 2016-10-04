@@ -6,7 +6,13 @@ TODO
  * "optimal" tiling-mode, based on height/width
  * update_geometry -> update_geometry + actually_set_geometry ?
  * swap clients
- * fullscreen ?
+ *!fullscreen ? (tabbing fullscreen and floating)
+ * handled window list for EWMH
+ * apply_gravity, where?
+ * save geometry from before tiling?
+ * on resize some windows show the background, maybe I can help that with drawing the parent-window black?
+
+
 
 
  * I could remove the prev pointer..

@@ -417,22 +417,16 @@ static xcb_rectangle_t screen_rect()
 
 void toggle_floating(client_t *client)
 {
-	// XXX only append newly opened window to tiling node, not floating?
-	// XXX save original geometry?
+	if (client == NULL)
+		return;
 
-	if (wtree_toggle_floating(client->wsitem) && ! client->fullscreen) {
-		// floating is on now and not fullscreened
+	// XXX save original geometry?
+	// restore geometry if floating-window got unfullscreened
+	if (wtree_toggle_floating(client->wsitem) && ! client->fullscreen)
 		update_geometry(client, &client->geometry_last);
-	}
 
 	update_clues(wslist[client->ws], screen_rect());
 	wtree_print_tree(wslist[client->ws]);
-
-	if (client == NULL)
-		return;
-	return;
-	/* XXX tiling
-	 * not yet */
 }
 
 // toggle tiling mode of parent container
@@ -443,14 +437,12 @@ void toggle_tiling(client_t *client)
 	switch (wtree_parent_tiling(client->wsitem)) {
 		case TILING_VERTICAL:
 			wtree_set_parent_tiling(client->wsitem, TILING_HORIZONTAL);
-			// XXX tiling, store geometry in tiling nodes
-			// so I only need to update children
 			break;
 		case TILING_HORIZONTAL:
 			wtree_set_parent_tiling(client->wsitem, TILING_VERTICAL);
-			// XXX tiling, store geometry in tiling nodes
 			break;
 	}
+	// XXX tiling, store geometry in tiling nodes
 	update_clues(wslist[client->ws], screen_rect());
 	wtree_print_tree(wslist[client->ws]);
 }
@@ -461,6 +453,7 @@ void setup_workspaces()
 		wslist[i] = wtree_new_workspace(screen_rect());
 }
 
+/* XXX Don't like that */
 client_t *focuswin(uint32_t ws)
 {
 	assert(ws < WORKSPACES);
@@ -827,38 +820,46 @@ void set_workspace(client_t *client, uint32_t ws)
 	wtree_t *node = client->wsitem;
 	client_t *focus = focuswin(ws);
 
+	/* Check for active window */
 	if (focus == NULL) {
-		PDEBUG("setws: no focuswin\n");
-		/* no active window, attach to root */
+		/* Attach client to root */
 		if (wslist[ws]->child == NULL) {
-			PDEBUG("setws: > no children on root\n");
+			/* No tiling-node on root, attach tiling-node with node. */
 			wtree_append_tile_child(wslist[ws], node, tiling_mode);
 		} else {
-			PDEBUG("setws: > children on root\n");
-			if (wtree_tiling(wslist[ws]->child) == tiling_mode) {
-				PDEBUG("setws: >> same tiling\n");
-				wtree_append_child(wslist[ws]->child, node);
+			tree_t *parent = wslist[ws]->child;
+
+			if (wtree_tiling(parent) == tiling_mode) {
+				/* Tiling-node on root with the same tiling, append. */
+				wtree_append_child(parent, node);
 			} else {
-				PDEBUG("setws: >> different tiling\n");
-				wtree_append_tile_child(wslist[ws]->child, node, tiling_mode);
-				// XXX this is wrong, make it like XXX1:
+				assert(parent->child != NULL);
+				/* Tiling-node on root with different tiling,
+				   - on singleton: change tiling-mode and add to
+				   - on siblings : add as tile-sibling
+				 */
+				if (parent->child->next == NULL && parent->child->prev == NULL) {
+					wtree_set_tiling(parent, tiling_mode);
+					wtree_add_sibling(parent->child, node);
+				} else {
+					wtree_append_tile_child(parent, node, tiling_mode);
+				}
 			}
 		}
 	} else {
-		PDEBUG("setws: focuswin\n");
-		/* attach to active window */
-		if (wtree_parent_tiling(focus->wsitem) == tiling_mode)
-			wtree_add_sibling(focus->wsitem, node);
-		else {
-			// XXX1:
-			if (focus->wsitem->next == NULL && focus->wsitem->prev == NULL) {
-				// singleton, replace prior tiling-mode
+		/* Attach to active window */
+		if (wtree_parent_tiling(focus->wsitem) != tiling_mode) {
+			/* Tiling-node of focuswin with different tiling,
+			   - on singleton: change tiling-mode and add to
+			   - on siblings : replace focuswin with tiling-node
+			     and add as sibling
+			*/
+			if (focus->wsitem->next == NULL && focus->wsitem->prev == NULL)
 				wtree_set_parent_tiling(focus->wsitem, tiling_mode);
-			} else {
+			else
 				wtree_inter_tile(focus->wsitem, tiling_mode);
-			}
-			wtree_add_sibling(focus->wsitem, node);
 		}
+		wtree_add_sibling(focus->wsitem, node);
 	}
 	/* Set _NET_WM_DESKTOP accordingly or leave it  */
 	xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);

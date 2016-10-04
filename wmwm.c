@@ -655,7 +655,7 @@ void arrangewindows(void)
  */
 void ewmh_update_client_list()
 {
-// TODO tiling
+/* TODO tiling */
 #if 0
 	list_t *item;
 	xcb_window_t *window_list;
@@ -3615,35 +3615,9 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 	client_t *client = find_clientp(e->event);
 	if (! client || client == focuswin(curws))
 		return;
-
 	/*
-	 * Set focus to the window we just
-	 * entered if we can find it among the windows we
-	 * know about. If not, just keep focus in the old
-	 * window.
+	 * Set focus to the window we just entered.
 	 */
-/* TODO tiling */
-#if 0
-	if (! is_mode(mode_tab)) {
-		/*
-		 * We are focusing on a new window. Since
-		 * we're not currently tabbing around the
-		 * window ring, we need to update the
-		 * current workspace window list: Move
-		 * first the old focus to the head of the
-		 * list and then the new focus to the head
-		 * of the list.
-		 */
-		if (focuswin(curws)) {
-			list_to_head(&wslist[curws],
-					focuswin(curws)->wsitem[curws]);
-		}
-
-		list_to_head(&wslist[curws],
-				client->wsitem[curws]);
-	} /* if not tabbing */
-#endif
-
 	set_focus(client);
 }
 

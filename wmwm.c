@@ -787,6 +787,7 @@ void move_to_workspace(client_t *client, uint32_t ws)
 /*
  * set client to one or no workspace
  */
+// XXX: fix for fullsreeen
 void set_workspace(client_t *client, uint32_t ws)
 {
 	if (client == NULL)
@@ -864,8 +865,10 @@ void set_workspace(client_t *client, uint32_t ws)
 	/* Set _NET_WM_DESKTOP accordingly or leave it  */
 	xcb_ewmh_set_wm_desktop(ewmh, client->id, ws);
 
-	// fixup geometries
-	update_clues(wslist[ws], screen_rect());
+	// fixup geometries in tree
+	if (! (wtree_is_floating(node) || client->fullscreen))
+		update_clues(wslist[ws], screen_rect());
+
 	wtree_print_tree(wslist[ws]);
 
 	xcb_flush(conn);
@@ -1170,10 +1173,8 @@ void new_win(xcb_window_t win)
 		}
 	}
 
-	if (wtree_is_floating(client->wsitem) || client->fullscreen) {
-		apply_gravity(client, &geometry);
+	if (wtree_is_floating(client->wsitem) || client->fullscreen)
 		update_geometry(client, &geometry);
-	}
 
 	/* Show window on screen. */
 	set_default_events(client);

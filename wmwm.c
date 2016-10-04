@@ -1135,32 +1135,30 @@ void new_win(xcb_window_t win)
 	 * for the window we map it where our pointer is instead.
 	 * Or to the center of the monitor out pointer is on.
 	 */
-#if 0
-	if (client->usercoord) {
-		/* hints.x,y are obsolete and often not used, in that case just use
-		 x,y given in initialization */
-		geometry.x = client->hints.x;
-		geometry.y = client->hints.y;
-		PDEBUG("User set coordinates: %d,%d\n", geometry.x, geometry.y);
-	} else {
-		int16_t pointx;
-		int16_t pointy;
-
-		/* Get pointer position so we can move the window to the cursor. */
-		if (get_pointer(screen->root, &pointx, &pointy)) {
-			geometry.x = pointx - geometry.width / 2;
-			geometry.y = pointy - geometry.height / 2;
+	// XXX on tiling-nodes, put this in in last_geometry?
+	if (wtree_is_floating(client->wsitem)) {
+		if (client->usercoord) {
+			/* hints.x,y are obsolete and often not used,
+			 * in that case just use x,y given in initialization */
+			PDEBUG("User set coordinates: %d,%d\n", geometry.x, geometry.y);
 		} else {
-			geometry.x = 0;
-			geometry.y = 0;
-		}
-		PDEBUG("Coordinates not set by user. Using: %d,%d.\n",
-				pointx, pointy);
-	}
+			int16_t pointx;
+			int16_t pointy;
 
+			/* Get pointer position so we can move the window to the cursor. */
+			if (get_pointer(screen->root, &pointx, &pointy)) {
+				geometry.x = pointx - geometry.width / 2;
+				geometry.y = pointy - geometry.height / 2;
+			} else {
+				geometry.x = 0;
+				geometry.y = 0;
+			}
+			PDEBUG("Coordinates not set by user. Using: %d,%d.\n",
+					pointx, pointy);
+		}
+	}
 	/* Find the physical output this window will be on if RANDR
 	   is active. */
-#endif
 	if (-1 != randrbase) {
 		client->monitor = find_monitor_at(geometry.x, geometry.y);
 		if (! client->monitor) {

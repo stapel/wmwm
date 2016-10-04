@@ -2209,7 +2209,6 @@ client_t *find_clientp(xcb_drawable_t win)
 		return client;
 
 	client = wtree_find_client(wslist[curws], &find_clientp_helper, &win);
-
 	if (client)
 		return client;
 
@@ -2560,10 +2559,6 @@ void toggle_fullscreen(client_t *client)
 	if (! client)
 	   return;
 
-	// XXX: for now only fullscreen for floats
-//	if (! wtree_is_floating(client->wsitem))
-//		return;
-
 	xcb_rectangle_t monitor;
 	get_monitor_geometry(client->monitor, &monitor);
 
@@ -2694,13 +2689,8 @@ void erase_client(client_t *client)
 	xcb_generic_error_t *error = NULL;
 	uint32_t cws = client->ws;
 
-	/* set_focus ? XXX */
-	// XXX tiling: only one now
 	if (focuswin(cws) == client)
 		set_focuswin(cws, NULL);
-//	for (uint32_t ws = 0; ws < WORKSPACES; ws++)
-//		if (focuswin(ws) == client)
-//			set_focuswin(ws, NULL);
 
 	if (client->frame != XCB_WINDOW_NONE) {
 		error = xcb_request_check(conn,
@@ -3371,18 +3361,16 @@ void handle_key_press(xcb_generic_event_t *ev)
 					resize_step(fwin, step_right);
 					break;
 
-				// XXX tiling
-				/* toggle floating mode of focus-win */
-				case KEY_FLOATING:
+				case KEY_FLOATING: /* toggle floating mode of focus-win */
 					if (fwin)
 						toggle_floating(fwin);
 					break;
 
-				/* toggle tiling mode of focus-win */
-				case KEY_TILING:
+				case KEY_TILING: /* toggle tiling mode of focus-win */
 					if (fwin)
 						toggle_tiling(fwin);
 					break;
+
 				case KEY_WS1:
 					move_to_workspace(focuswin(curws), 0);
 					break;
@@ -3431,11 +3419,11 @@ void handle_key_press(xcb_generic_event_t *ev)
 		/* CTRL + META */
 		case MODKEY:
 			switch (key) {
-				case KEY_NEXT:			/* tab */
-					focus_next(); // XXX: tiling
+				case KEY_NEXT:		/* tab */
+					focus_next();
 					break;
 
-				case KEY_TERMINAL:		/* return */
+				case KEY_TERMINAL:	/* return */
 					start(conf.terminal);
 					break;
 
@@ -3475,11 +3463,11 @@ void handle_key_press(xcb_generic_event_t *ev)
 					floating_mode = !floating_mode;
 					break;
 
-				case KEY_RAISE_LOWER:		/* r */
+				case KEY_RAISE_LOWER:/* r */
 					raise_or_lower_client(focuswin(curws));
 					break;
 
-				case KEY_MAXIMIZE:		/* x */
+				case KEY_MAXIMIZE:	/* x */
 					toggle_fullscreen(focuswin(curws));
 					break;
 

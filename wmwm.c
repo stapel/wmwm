@@ -4208,12 +4208,16 @@ int main(int argc, char **argv)
 	cleanup(sigcode);
 }
 
+/* Set focus on next window if not fullscreen */
 void focus_next()
 {
 	wtree_t *node = NULL;
 
-	if (focuswin(curws))
+	if (focuswin(curws)) {
+		if (focuswin(curws)->fullscreen)
+			return;
 		node = wtree_next(focuswin(curws)->wsitem);
+	}
 
 	if (node == NULL)
 		node = wtree_next(wslist[curws]);

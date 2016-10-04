@@ -2204,15 +2204,17 @@ client_t *find_clientp(xcb_drawable_t win)
 		return NULL;
 
 	/* check current workspace first */
-	client_t *client =
-		wtree_find_client(wslist[curws], &find_clientp_helper, &win);
+	client_t *client = focuswin(curws);
+	if (client && (client->id == win || client->frame == win))
+		return client;
+
+	client = wtree_find_client(wslist[curws], &find_clientp_helper, &win);
 
 	if (client)
 		return client;
 
 	for (uint32_t i = 0; i < WORKSPACES; i++) {
-		if (i == curws)
-			continue;
+		if (i == curws) continue;
 
 		client = wtree_find_client(wslist[i], &find_clientp_helper, &win);
 		if (client)
@@ -2235,15 +2237,17 @@ client_t *find_client(xcb_drawable_t win)
 	if (win == screen->root)
 		return NULL;
 
-	/* XXX: focuswin */
 	/* check current workspace first */
-	client_t *client = wtree_find_client(wslist[curws], &find_client_helper, &win);
+	client_t *client = focuswin(curws);
+	if (client && client->id == win)
+		return client;
+
+	client = wtree_find_client(wslist[curws], &find_client_helper, &win);
 	if (client)
 		return client;
 
 	for (uint32_t i = 0; i < WORKSPACES; i++) {
-		if (i == curws)
-			continue;
+		if (i == curws) continue;
 
 		client = wtree_find_client(wslist[i], &find_client_helper, &win);
 		if (client)

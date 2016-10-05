@@ -724,6 +724,8 @@ uint32_t ewmh_get_workspace(xcb_drawable_t win)
 	return ws;
 }
 
+// XXX update_clues does not know about fullscreen, so tries to change windows which shouldn't
+// anyhow, that situation needs to change
 void update_clues(wtree_t *node, xcb_rectangle_t rect)
 {
 	if (node == NULL)
@@ -967,15 +969,16 @@ int update_geometry(client_t *client,
 
 	/* XXX: check if geometry or monitor geometry changed (or hints, maybe set a geo changed flag) */
 
-	// or fullscreen ? XXX: some hints?
-	if (! wtree_is_floating(client->wsitem))
-		goto out;
-
 	/* Fullscreen, skip the checks  */
 	if (client->fullscreen) {
 		geo = monitor;
 		goto out;
 	}
+
+	// or fullscreen ? XXX: some hints?
+	if (! wtree_is_floating(client->wsitem))
+		goto out;
+
 
 	/* Is geometry proposed, or do we check current */
 	if (! geometry)

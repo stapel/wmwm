@@ -92,7 +92,7 @@ void list_remove(list_t **mainlist, list_t *item)
 		}
 	}
 
-	free(item);
+	destroy(item);
 }
 
 void list_erase(list_t **list, int *stored, list_t *item)

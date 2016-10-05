@@ -100,7 +100,9 @@ void wtree_free(wtree_t *node)
 	assert(node->data != NULL);
 
 	free(node->data);
+	node->data = NULL;
 	free(node);
+	node = NULL;
 }
 
 /*******************************************************/
@@ -430,6 +432,7 @@ static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 				(uintptr_t)cur, (uintptr_t)cur->child);
 	}
 	free(num);
+	num = NULL;
 
 	if (cur->next) {
 		++(*i);

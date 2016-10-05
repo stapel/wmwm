@@ -1044,8 +1044,8 @@ out: ;
 	uint16_t value_mask = 0;
 	uint32_t frame_values[4];
 	uint16_t frame_value_mask = 0;
-	int cm = 0;
-	int fm = 0;
+	int cm = 0; // window modified
+	int fm = 0; // frame modified
 
 	if (client->geometry.x != geo.x) {
 		frame_value_mask |= XCB_CONFIG_WINDOW_X;
@@ -1089,8 +1089,8 @@ out: ;
 	if (cm)
 		xcb_configure_window(conn, client->id, value_mask, values);
 
-	/* send information about positional change to client */
-	if (fm > cm)
+	/* send information about geometry change to client */
+	if (fm > 0 || cm > 0)
 		send_configuration(client);
 
 	return 1;
@@ -1533,6 +1533,7 @@ bool setup_ewmh(void)
 	ewmh_allowed_actions[0] = ewmh->_NET_WM_ACTION_MAXIMIZE_VERT;
 	ewmh_allowed_actions[1] = ewmh->_NET_WM_ACTION_FULLSCREEN;
 
+	/* supported atoms */
 	xcb_atom_t atoms[] = {
 		ewmh->_NET_SUPPORTED,				// root
 		ewmh->_NET_NUMBER_OF_DESKTOPS,		// root

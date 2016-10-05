@@ -268,9 +268,9 @@ void wtree_inter_tile(wtree_t *client, tiling_t mode)
 {
 	wtree_t *tiler = wtree_new_tiling(mode);
 
-	// update parents count if needed
-	// because append_child will + it XXX
-	if (wtree_tiles(client->parent) > 0) {
+	// update parent tiles count if needed
+	// append_child will add it back
+	if (! wtree_is_floating(client)) {
 		tree_replace(client, tiler);
 		wtree_minus(tiler->parent);
 	} else {

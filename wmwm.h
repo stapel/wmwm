@@ -66,6 +66,7 @@ typedef struct client {
 	xcb_drawable_t frame;			/* ID of parent frame window. */
 
 	bool usercoord;					/* X,Y was set by -geom. */
+	bool modal;						/* client is dialog box, to be centerred */
 
 	xcb_rectangle_t geometry;		/* current frame geometry */
 	xcb_rectangle_t geometry_last;	/* geometry from before maximizing */

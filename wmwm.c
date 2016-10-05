@@ -1147,6 +1147,11 @@ void new_win(xcb_window_t win)
 			/* hints.x,y are obsolete and often not used,
 			 * in that case just use x,y given in initialization */
 			PDEBUG("User set coordinates: %d,%d\n", geometry.x, geometry.y);
+		} else if (client->modal) {
+			PDEBUG("Modal window, center!\n");
+			// XXX hack, see below (monitor)
+			geometry.x = screen_rect().width / 2 - client->geometry.width / 2;
+			geometry.y = screen_rect().height / 2 - client->geometry.height / 2;
 		} else {
 			int16_t pointx;
 			int16_t pointy;
@@ -1323,6 +1328,7 @@ client_t *create_client(xcb_window_t win)
 	client->frame = XCB_WINDOW_NONE;
 
 	/* XXX tiling: vertmax, fullscreen */
+	client->modal = false;
 	client->monitor = NULL;
 	client->usercoord = false;
 	client->vertmaxed = false;
@@ -1338,7 +1344,6 @@ client_t *create_client(xcb_window_t win)
 	client->colormap = screen->default_colormap;
 
 	client->ws = WORKSPACE_NONE;
-	client->wsitem = wtree_new_client(client, floating_mode);
 
 	PDEBUG("Adding window 0x%x\n", client->id);
 
@@ -1349,6 +1354,55 @@ client_t *create_client(xcb_window_t win)
 		return NULL;
 	}
 	client->geometry_last = client->geometry;
+
+	/* Gather ICCCM specified hints for window management */
+	icccm_update_wm_hints(client);
+	icccm_update_wm_normal_hints(client);
+	icccm_update_wm_protocols(client);
+
+	/* Float transient windows */
+	bool floating = floating_mode;
+	xcb_window_t transient_for = XCB_WINDOW_NONE;
+
+	xcb_icccm_get_wm_transient_for_reply(conn,
+				xcb_icccm_get_wm_transient_for(conn, client->id), &transient_for, NULL);
+	if (transient_for != XCB_WINDOW_NONE) {
+		PDEBUG("Transient for 0x%x\n", transient_for);
+		floating = true;
+	}
+
+	/* Float dialogs, splash screen and utilities */
+	xcb_ewmh_get_atoms_reply_t window_type;
+	if (xcb_ewmh_get_wm_window_type_reply(ewmh, xcb_ewmh_get_wm_window_type(ewmh, client->id), &window_type, NULL) == 1) {
+		for (uint32_t i = 0; i < window_type.atoms_len; i++) {
+			const xcb_atom_t atom = window_type.atoms[i];
+			if (atom == ewmh->_NET_WM_WINDOW_TYPE_UTILITY) {
+				PDEBUG("UTILITY\n");
+				floating = true;
+				break;
+			} else if (atom == ewmh->_NET_WM_WINDOW_TYPE_SPLASH
+					|| atom == ewmh->_NET_WM_WINDOW_TYPE_DIALOG) {
+				PDEBUG("SPLASH or DIALOG\n");
+				// Center those windows
+				floating = true;
+				client->modal = true;
+				break;
+			}
+		}
+		xcb_ewmh_get_atoms_reply_wipe(&window_type);
+	}
+
+	/* check if min-size == max-size -> float */
+	/* (eg. java awt splash screens) */
+	if ((client->hints.flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)
+			&& (client->hints.flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE)
+			&& (client->hints.max_height == client->hints.min_height)
+			&& (client->hints.max_width == client->hints.min_width)) {
+		floating = true;
+	}
+
+	/* Finally create node with floating mode */
+	client->wsitem = wtree_new_client(client, floating);
 
 	/* Create frame and reparent */
 	attach_frame(client);
@@ -1371,10 +1425,6 @@ client_t *create_client(xcb_window_t win)
 		update_shape(client);
 	}
 
-	/* Gather ICCCM specified hints for window management */
-	icccm_update_wm_hints(client);
-	icccm_update_wm_normal_hints(client);
-	icccm_update_wm_protocols(client);
 
 	/* Set _NET_WM_STATE_* */
 	ewmh_update_state(client);
@@ -1545,17 +1595,27 @@ bool setup_ewmh(void)
 		ewmh->_NET_WM_NAME,					// window
 		ewmh->_NET_WM_DESKTOP,				// window
 
+		/* WM can place windows */
+		ewmh->_NET_WM_FULL_PLACEMENT,		// window
+
+		/* Types of windows */
+		ewmh->_NET_WM_WINDOW_TYPE_DIALOG,	// window
+		ewmh->_NET_WM_WINDOW_TYPE_SPLASH,	// window
+		ewmh->_NET_WM_WINDOW_TYPE_UTILITY,	// window
+		ewmh->_NET_WM_WINDOW_TYPE_NORMAL,	// window
+
+		/* States of windows */
 		ewmh->_NET_WM_STATE,				// window
-		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// option
+//		ewmh->_NET_WM_STATE_MAXIMIZED_VERT,	// option
 		ewmh->_NET_WM_STATE_FULLSCREEN,		// option
 		ewmh->_NET_WM_STATE_HIDDEN,			// option
-		ewmh__NET_WM_STATE_FOCUSED,		// option
+		ewmh__NET_WM_STATE_FOCUSED,			// option! XXX: not in ewmh
 
 		ewmh->_NET_WM_ALLOWED_ACTIONS,		// window
 		ewmh->_NET_WM_ACTION_MAXIMIZE_VERT,	// option
 		ewmh->_NET_WM_ACTION_FULLSCREEN,	// option
 
-		ewmh->_NET_SUPPORTING_WM_CHECK,		// window
+		ewmh->_NET_SUPPORTING_WM_CHECK,		// root
 		ewmh->_NET_FRAME_EXTENTS,			// window
 		ewmh->_NET_REQUEST_FRAME_EXTENTS,   // message
 		ewmh->_NET_CLOSE_WINDOW,			// message

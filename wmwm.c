@@ -65,7 +65,7 @@
 #define PERROR(Args...) \
 	do { fprintf(stderr, "ERROR wmwm: "); fprintf(stderr, ##Args); } while(0)
 
-#ifdef DEBUG
+#ifdef DEBUGMSG
 #define PDEBUG(Args...) \
 	do { fprintf(stderr, "wmwm: "); fprintf(stderr, ##Args); } while(0)
 #define D(x) x
@@ -289,7 +289,7 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 
 static uint32_t getcolor(const char *colstr);
 static xcb_atom_t get_atom(char *atom_name);
-#if DEBUG
+#if DEBUGMSG
 static char* get_atomname(xcb_atom_t atom);
 #endif
 
@@ -1696,7 +1696,7 @@ bool setup_screen(void)
 						client->geometry.y);
 				client->monitor = find_monitor_at(client->geometry.x,
 						client->geometry.y);
-#if DEBUG
+#if DEBUGMSG
 				if (client->monitor) {
 					PDEBUG("Found client on monitor %s.\n",
 							client->monitor->name);
@@ -3332,7 +3332,7 @@ void handle_motion_notify(xcb_generic_event_t *ev)
 		mouse_move(focuswin(curws), e->root_x - mode_x, e->root_y - mode_y);
 	else if (is_mode(mode_resize))
 		mouse_resize(focuswin(curws), e->root_x, e->root_y);
-#if DEBUG
+#ifdef DEBUGMSG
 	else
 		PDEBUG("Motion event when we're not moving our resizing! \n");
 #endif
@@ -4058,7 +4058,7 @@ xcb_atom_t get_atom(char *atom_name)
 	return XCB_ATOM_NONE;
 }
 
-#if DEBUG
+#if DEBUGMSG
 /*
  * Get atom name string
  *

@@ -6,7 +6,7 @@
 #include <stdio.h>     // for NULL, fprintf, snprintf, FILE, fclose, fopen
 #include <stdlib.h>    // for calloc, free
 
-#ifdef DEBUG
+#ifdef DEBUGMSG
 #define PDEBUG(Args...) \
 	do { fprintf(stderr, "ct: "); fprintf(stderr, ##Args); } while(0)
 #define D(x) x

@@ -19,13 +19,14 @@ MANDIR ?= $(PREFIX)/man
 WARNINGS = -Wall -Wextra -pedantic -Wno-variadic-macros -Werror -Wno-unused-function
 
 ifeq ($(verbose),1)
-	EXTRA_CFLAGS += -DDEBUG
+	EXTRA_CFLAGS += -DDEBUGMSG
 endif
 
 ifeq ($(debug),1)
 	# dont forget about leaks XXX
 	CFLAGS  = -std=c11 -g -fsanitize=address,undefined -U_FORTIFY_SOURCE\
-			  -fno-omit-frame-pointer -O1 $(WARNINGS) $(EXTRA_CFLAGS)
+			  -fno-omit-frame-pointer -O1 -DDEBUG\
+			  $(WARNINGS) $(EXTRA_CFLAGS)
 	LDFLAGS = -fsanitize=address,undefined -U_FORTIFY_SOURCE $(EXTRA_LDFLAGS)
 else
 	CFLAGS  = -std=c11 -O2 -pedantic $(WARNINGS) $(EXTRA_CFLAGS)

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "list.h"
 
-#ifdef DEBUG
+#ifdef DEBUGMSG
 #define PDEBUG(Args...) \
   do { fprintf(stderr, "list: "); fprintf(stderr, ##Args); } while(0)
 #define D(x) x

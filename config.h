@@ -83,6 +83,7 @@
 #define USERKEY_TILING		XK_V
 #define USERKEY_FLOATING	XK_F
 #define USERKEY_RAISE		XK_R
+#define USERKEY_SWAP		XK_S
 #define USERKEY_TERMINAL	XK_Return
 #define USERKEY_MENU	 	XK_D
 #define USERKEY_MAX			XK_X

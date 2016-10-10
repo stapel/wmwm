@@ -35,6 +35,8 @@ void tree_insert(tree_t *next, tree_t *node);
 void tree_add(tree_t *next, tree_t *node);
 /* replace _from_ with _to_ */
 void tree_replace(tree_t *from, tree_t *to);
+/* swap _from_ with _to_ */
+void tree_swap(tree_t *from, tree_t *to);
 
 tree_t *tree_walk_up_left(tree_t *node);
 tree_t *tree_walk_down_right(tree_t *node);

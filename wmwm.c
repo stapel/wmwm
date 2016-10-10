@@ -187,6 +187,7 @@ struct keys {
 	{ USERKEY_TILING, 0},
 	{ USERKEY_FLOATING, 0},
 	{ USERKEY_RAISE, 0},
+	{ USERKEY_SWAP, 0},
 	{ USERKEY_TERMINAL, 0},
 	{ USERKEY_MENU, 0},
 	{ USERKEY_MAX, 0},
@@ -2148,7 +2149,6 @@ void raise_or_lower_client(client_t *client)
 {
 	uint32_t values[] = { XCB_STACK_MODE_OPPOSITE };
 	xcb_drawable_t win;
-	assert(client != NULL);
 
 	// only raise floats
 	if (! client || ! wtree_is_floating(client->wsitem))
@@ -3528,6 +3528,20 @@ void handle_key_press(xcb_generic_event_t *ev)
 
 				case KEY_RAISE_LOWER:/* r */
 					raise_or_lower_client(focuswin(curws));
+					break;
+
+				case KEY_SWAP:		/* s */
+					if (focuswin(curws)) {
+						if (focuswin(curws)->wsitem->next) {
+							wtree_swap(focuswin(curws)->wsitem,
+									focuswin(curws)->wsitem->next);
+							update_clues(wslist[curws], screen_rect());
+						} else if (focuswin(curws)->wsitem->prev) {
+							wtree_swap(focuswin(curws)->wsitem,
+									focuswin(curws)->wsitem->prev);
+							update_clues(wslist[curws], screen_rect());
+						}
+					}
 					break;
 
 				case KEY_MAXIMIZE:	/* x */

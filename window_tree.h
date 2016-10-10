@@ -99,6 +99,9 @@ tiling_t wtree_parent_tiling(wtree_t *node);
 void wtree_set_tiling(wtree_t *node, tiling_t tiling);
 void wtree_set_parent_tiling(wtree_t *node, tiling_t tiling);
 
+/* swap from with to */
+static void wtree_swap(wtree_t *from, wtree_t *to) { tree_swap(from, to); }
+
 /* add/append sibling/children */
 void wtree_add_sibling(wtree_t *current, wtree_t *node);
 void wtree_append_sibling(wtree_t *current, wtree_t *node);

@@ -1,20 +1,20 @@
 TODO
 -------------------
 
+Supported:
+_NET_WM_FULL_PLACEMENT (for
+
+
  * Merge Containers
  *! Make wtree functions use client_t to hide tree stuff?
  * "optimal" tiling-mode, based on height/width
  * update_geometry -> update_geometry + actually_set_geometry ?
- * swap clients
- *!fullscreen ? (tabbing fullscreen and floating)
  * handled window list for EWMH
- * apply_gravity, where?
  * save geometry from before tiling?
- * on resize some windows show the background, maybe I can help that with drawing the parent-window black?
+ * move floating, fullscreen test from raise/lower to before 
 
 
-
-
+OLD TODO
  * I could remove the prev pointer..
  * Key handling
  * client list atom in root window: all windows or workdesk?
@@ -26,21 +26,13 @@ TODO
  * respect workarea (e.g. title bar)?
  * mouse raise/lower does not allways work when I keep clicking
  * jdownloader2 seems to fuck up focus
- * dialog positioning (_NET_WM_WINDOW_TYPE_DIALOG etc)
- * (if wmwm starts? and) something is fullscreen, maybe use hints for
-   unfullscreen state
  * retroarch looses focus on quit
  * size hints are minus border etc, maybe check for others as well
  * size hints position and size are obsolete
  * better handling of atoms (ewmh,icccm) and their usage
    (cut xcb_ewmh ext?)
  * !XXX user/program specified size
- * !clients when WM restarts?
- * !I had 20T VM usage? (probably Xorg-bug)
- * !it happened once that I could not toggle between all visible windows
  * inactive border color (allow to choose and/or dim inactive from active)
- * allow old MODKEY functionality (e.g. windows-key instead of ALT+CTRL)
- * !CTRL+ALT+SHIFT+NUMBER sends focuswin to workspace NUMBER?
  * !set CLASS and PID for Window Manager
  * maybe change TAB change order (orig was different)
  * !race condition on workspace-switch? (mapping/focus)

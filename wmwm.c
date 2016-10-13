@@ -4300,8 +4300,15 @@ void focus_next()
 	if (node == NULL)
 		node = wtree_next(wslist[curws]);
 
-	if (node)
-		set_focus(wtree_client(node));
+	if (node) {
+		client_t *client = wtree_client(node);
+		if (! pointer_over_client(client))
+			xcb_warp_pointer(conn, XCB_WINDOW_NONE, client->id,
+					0, 0, 0, 0,
+					client->geometry.width / 2,
+					client->geometry.height / 2);
+		set_focus(client);
+	}
 }
 
 

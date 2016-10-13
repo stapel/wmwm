@@ -116,7 +116,7 @@ void tree_swap(tree_t *from, tree_t *to)
 			to->next->prev = to;
 		if (from->prev)
 			from->prev->next = from;
-	
+
 		// update onisan
 		if (to->parent && to->parent->child == to)
 			to->parent->child = from;

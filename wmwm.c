@@ -781,7 +781,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 
 void move_to_workspace(client_t *client, uint32_t ws)
 {
-	if (curws == ws)
+	if (curws == ws || client == NULL)
 		return;
 	hide(client);
 	set_workspace(client, ws);

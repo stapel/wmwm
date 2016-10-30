@@ -1667,7 +1667,7 @@ bool setup_screen(void)
 				NULL);
 
 		if (! attr) {
-			PERROR("Couldn't get attributes for window %d.", children[i]);
+			PERROR("Couldn't get attributes for window %u.", children[i]);
 			continue;
 		}
 
@@ -3132,7 +3132,7 @@ void events(void)
 /* Generic Xerror printer */
 void print_x_error(xcb_generic_error_t *e)
 {
-	PERROR("wmwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %d)\n",
+	PERROR("wmwm: X error = %s - %s (code: %d, op: %d/%d res: 0x%x seq: %d, fseq: %u)\n",
 		xcb_event_get_error_label(e->error_code),
 		xcb_event_get_request_label(e->major_code),
 		e->error_code,

@@ -102,7 +102,6 @@ void wtree_free(wtree_t *node)
 	free(node->data);
 	node->data = NULL;
 	free(node);
-	node = NULL;
 }
 
 /*******************************************************/

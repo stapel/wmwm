@@ -1,10 +1,15 @@
 TODO
 -------------------
 
+
+DON'T ALLOW CONTAINERS WITH ONLY ONE CLIENT (delete one from a pair, not being able to toggle tiling the parent)
+
+
 Supported:
 _NET_WM_FULL_PLACEMENT (for
 
-
+ *!signal the application that it has been resized doesn't always work on startup ?
+   ( )
  * Merge Containers
  *! Make wtree functions use client_t to hide tree stuff?
  * "optimal" tiling-mode, based on height/width
@@ -43,10 +48,6 @@ OLD TODO
  * color: use logic ops for "graying/darken" "normal" colors
  * startup:
  * 	focus (would have to switch ws to make everything work fine)
- * 	windows get moved some pixels ?
- * Override-Redirect Windows ? (dock etc.)
- 	what about them going off-screen?
- * gprof/gcov?
  * focuswin/lastfocuswin (remove that last- somehow)
  * !only update geometry after workspace change (or on current) after
    monitor-updates

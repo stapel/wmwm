@@ -1091,8 +1091,9 @@ out: ;
 		xcb_configure_window(conn, client->id, value_mask, values);
 
 	/* send information about geometry change to client */
-	if (fm > 0 || cm > 0)
+	if (fm > 0 || cm > 0) {
 		send_configuration(client);
+	}
 
 	return 1;
 }

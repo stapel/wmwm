@@ -108,21 +108,21 @@ void wtree_free(wtree_t *node)
 // container handling functions
 
 // is node a client node
-bool wtree_is_client(wtree_t *node)
+bool wtree_is_client_type(wtree_t *node)
 {
 	assert(node != NULL);
 	return (wtree_data(node)->type == CONTAINER_CLIENT);
 }
 
 // is node a tiling node
-bool wtree_is_tiling(wtree_t *node)
+bool wtree_is_tiling_type(wtree_t *node)
 {
 	assert(node != NULL);
 	return (wtree_data(node)->type == CONTAINER_TILING);
 }
 
 // is node a workspace node
-bool wtree_is_workspace(wtree_t *node)
+bool wtree_is_workspace_type(wtree_t *node)
 {
 	assert(node != NULL);
 	return (wtree_data(node)->type == CONTAINER_WORKSPACE);
@@ -154,7 +154,7 @@ static void wtree_plus(wtree_t *node)
 {
 	++(wtree_data(node)->tiles);
 	PDEBUG("node+: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
-	if (wtree_data(node)->tiles == 1 && ! wtree_is_workspace(node->parent)) {
+	if (wtree_data(node)->tiles == 1 && ! wtree_is_workspace_type(node->parent)) {
 		// We now got a tile in here, tell parent
 		wtree_plus(node->parent);
 	}
@@ -165,7 +165,7 @@ static void wtree_minus(wtree_t *node)
 	assert(wtree_data(node)->tiles != 0);
 	--(wtree_data(node)->tiles);
 	PDEBUG("node-: %p (%d)\n", (void*)node, (wtree_data(node)->tiles));
-	if (wtree_data(node)->tiles == 0 && !wtree_is_workspace(node->parent)) {
+	if (wtree_data(node)->tiles == 0 && !wtree_is_workspace_type(node->parent)) {
 		// We now haven't any tiles left, update parent
 		wtree_minus(node->parent);
 	}
@@ -243,7 +243,7 @@ void wtree_set_parent_tiling(wtree_t *node, tiling_t tiling)
 void wtree_add_sibling(wtree_t *current, wtree_t *node)
 {
 	tree_add(current, node);
-	if (wtree_is_client(node) && ! wtree_data(node)->floating)
+	if (wtree_is_client_type(node) && ! wtree_data(node)->floating)
 		wtree_plus(node->parent);
 }
 
@@ -254,7 +254,7 @@ void wtree_append_child(wtree_t *parent, wtree_t *node)
 	// other vars
 	if (parent->child == NULL) {
 		parent->child = node;
-		if (wtree_is_client(node) && ! wtree_data(node)->floating)
+		if (wtree_is_client_type(node) && ! wtree_data(node)->floating)
 			wtree_plus(parent);
 	} else {
 		wtree_t *sib = parent->child;
@@ -317,9 +317,9 @@ void wtree_remove(wtree_t *node)
 	tree_extract(node);
 
 	// update parent node
-	if (parent && wtree_is_tiling(parent)) {
+	if (parent && wtree_is_tiling_type(parent)) {
 		// decrement child counter
-		if (wtree_is_client(node) && ! wtree_data(node)->floating)
+		if (wtree_is_client_type(node) && ! wtree_data(node)->floating)
 			wtree_minus(parent);
 		// in case of non-root-parent tile, remove it
 		if (tree_child(parent) == NULL) {
@@ -333,7 +333,7 @@ wtree_t *wtree_next(wtree_t *node)
 {
 	do {
 		node = tree_walk_down_right(node);
-	} while (node != NULL && ! wtree_is_client(node));
+	} while (node != NULL && ! wtree_is_client_type(node));
 	return node;
 }
 
@@ -346,7 +346,7 @@ void wtree_traverse_clients(wtree_t *node, void(*action)(client_t *))
 
 	assert((node->next != node->prev) || node->next == NULL);
 
-	if (wtree_is_client(node))
+	if (wtree_is_client_type(node))
 		action(wtree_client(node));
 
 	if (node->next != NULL)
@@ -363,7 +363,7 @@ client_t *wtree_find_client(wtree_t *node, bool(*compare)(client_t*, void *), vo
 	if (node == NULL)
 		return NULL;
 
-	if (wtree_is_client(node) && compare(wtree_client(node), arg))
+	if (wtree_is_client_type(node) && compare(wtree_client(node), arg))
 		return wtree_client(node);
 
 	client_t *client;
@@ -384,7 +384,7 @@ static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 
 	char *num = calloc(10, 1);
 
-	if (wtree_is_tiling(cur)) {
+	if (wtree_is_tiling_type(cur)) {
 		switch (wtree_tiling(cur)) {
 			case TILING_VERTICAL:
 				snprintf(num, 10, "V%d", *i);
@@ -398,7 +398,7 @@ static void wtree_print_tree_r(FILE *file, wtree_t *cur, int *i)
 		}
 		fprintf(file, "%"PRIuPTR" [label=\"%s (%d)\" shape=triangle];\n",
 				(uintptr_t)cur, num, wtree_tiles(cur));
-	} else if (wtree_is_workspace(cur)) {
+	} else if (wtree_is_workspace_type(cur)) {
 		snprintf(num, 10, "root");
 		fprintf(file, "%"PRIuPTR" [label=\"%s\" shape=box];\n",
 				(uintptr_t)cur, num);

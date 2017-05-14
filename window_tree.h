@@ -63,13 +63,8 @@ wtree_t* wtree_new_client(client_t *client, bool floating);
 wtree_t* wtree_new_tiling(tiling_t tile);
 wtree_t* wtree_new_workspace(xcb_rectangle_t geo);
 
-
-
-
 client_t *wtree_focuswin(wtree_t *node);
 void wtree_set_focuswin(wtree_t *node, client_t *client);
-
-
 
 /* free node and its data */
 void wtree_free(wtree_t *node);
@@ -78,14 +73,14 @@ void wtree_free(wtree_t *node);
 client_t *wtree_client(wtree_t *node);
 
 /* check if node is ... */
-bool wtree_is_client(wtree_t *node);
-bool wtree_is_tiling(wtree_t *node);
-bool wtree_is_workspace(wtree_t *node);
-bool wtree_is_floating(wtree_t *node);
+bool wtree_is_client_type(wtree_t *node);
+bool wtree_is_tiling_type(wtree_t *node);
+bool wtree_is_workspace_type(wtree_t *node);
 
 wtree_t *wtree_next(wtree_t *node);
 
 bool wtree_toggle_floating(wtree_t *node);
+bool wtree_is_floating(wtree_t *node);
 // bool wtree_is_singleton(wtree_t* child); tree.h
 
 /* get number of tiles/children */

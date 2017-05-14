@@ -736,12 +736,12 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		return;
 
 	// root node
-	if (wtree_is_workspace(node)) {
+	if (wtree_is_workspace_type(node)) {
 		update_clues(node->child, rect);
 		return;
 	}
 
-	if (wtree_is_tiling(node) && wtree_tiles(node) > 0) {
+	if (wtree_is_tiling_type(node) && wtree_tiles(node) > 0) {
 		// tiling node with actual tiles
 
 		xcb_rectangle_t tmp = rect;
@@ -756,7 +756,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		}
 		// jump to the clients
 		update_clues(node->child, tmp);
-	} else if (wtree_is_client(node) && ! wtree_is_floating(node)) {
+	} else if (wtree_is_client_type(node) && ! wtree_is_floating(node)) {
 		int gaps = conf.borderwidth + conf.gapwidth;
 		xcb_rectangle_t tmp = rect;
 
@@ -772,7 +772,7 @@ void update_clues(wtree_t *node, xcb_rectangle_t rect)
 		return;
 	}
 	// only either non-floating nodes or tiling-nodes with non-floating nodes get here
-	if (wtree_is_tiling(node->parent)) {
+	if (wtree_is_tiling_type(node->parent)) {
 		if (wtree_parent_tiling(node) == TILING_HORIZONTAL)
 			rect.y += rect.height;
 		else if (wtree_parent_tiling(node) == TILING_VERTICAL)
@@ -2175,7 +2175,7 @@ void raise_or_lower_client(client_t *client)
 	uint32_t values[] = { XCB_STACK_MODE_OPPOSITE };
 	assert(client != NULL);
 
-	xcb_configure_window(conn, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
+	xcb_configure_window(conn, client->frame, XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
 
 /* Mark window win as unfocused. */
@@ -2226,7 +2226,7 @@ void update_size_helper(client_t *client, void *arg)
 void update_pos_helper(client_t *client, void *arg)
 {
 	xydata *xy = (xydata*)arg;
-	if (wtree_is_tiling(client->wsitem)) {
+	if (wtree_is_tiling_type(client->wsitem)) {
 		uint16_t tiles = ((container_t*)client->wsitem->data)->tiles;
 			if (tiles > 1) {
 				xy->x /= tiles;

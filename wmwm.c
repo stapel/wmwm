@@ -304,8 +304,9 @@ static void mouse_move(client_t *client, int rel_x, int rel_y);
 static void mouse_resize(client_t *client, int rel_x, int rel_y);
 static void move_step(client_t *client, step_direction_t direction);
 
-static void set_workspace(client_t *client, uint32_t ws);
+static void set_to_workspace(client_t *client, uint32_t ws);
 static void move_to_workspace(client_t *client, uint32_t ws);
+static void remove_from_workspace(client_t *client);
 static void change_workspace(uint32_t ws);
 
 static void update_shape(client_t *client);
@@ -783,44 +784,49 @@ void move_to_workspace(client_t *client, uint32_t ws)
 {
 	if (curws == ws || client == NULL)
 		return;
+
 	hide(client);
-	set_workspace(client, ws);
+	set_to_workspace(client, ws);
 }
 
+
+void remove_from_workspace(client_t *client)
+{
+	assert(client != NULL);
+
+	if (client->ws == WORKSPACE_NONE)
+		return;
+
+	/* Is it currently on its workspace */
+	if (focuswin(client->ws) == client)
+		set_focuswin(client->ws, NULL);
+
+	/* Remove old position and update old tree */
+	wtree_remove(client->wsitem);
+	update_clues(wslist[client->ws], screen_rect());
+
+	client->ws = WORKSPACE_NONE;
+}
 /*
  * set client to one or no workspace
  */
 // XXX: fix for fullsreeen
-void set_workspace(client_t *client, uint32_t ws)
+void set_to_workspace(client_t *client, uint32_t ws)
 {
-	if (client == NULL)
-		return;
-
-	assert((ws < WORKSPACES) || (ws == WORKSPACE_NONE));
+	assert(client != NULL);
+	assert(ws < WORKSPACES);
 
 	PDEBUG("set workspace for 0x%x to %u\n", client->id, ws);
 
 	if (client->ws == ws)
 		return;
 
-	/* Is it currently on its workspace */
-	if (client->ws != WORKSPACE_NONE && focuswin(client->ws) == client)
-		set_focuswin(client->ws, NULL);
-
-	// remove old position if available, and update old tree
-	if (client->ws != WORKSPACE_NONE) {
-		wtree_remove(client->wsitem);
-		update_clues(wslist[client->ws], screen_rect());
-	}
+	remove_from_workspace(client);
 
 	client->ws = ws;
 
-	if (ws == WORKSPACE_NONE)
-		return;
-
 	/* new workspace to be added to */
 	/* Is there a focused window we can add to ? */
-
 	wtree_t *node = client->wsitem;
 	client_t *focus = focuswin(ws);
 
@@ -1135,7 +1141,7 @@ void new_win(xcb_window_t win)
 	}
 
 	/* Add this window to the current workspace. */
-	set_workspace(client, curws);
+	set_to_workspace(client, curws);
 
 	/*
 	 * If the client doesn't say the user specified the coordinates
@@ -1719,7 +1725,7 @@ bool setup_screen(void)
 			uint32_t ws = ewmh_get_workspace(children[i]);
 
 			if (ws < WORKSPACES) {
-				set_workspace(client, ws);
+				set_to_workspace(client, ws);
 				/* If it's on our current workspace, show it, else hide it. */
 				if (ws == curws)
 					show(client);
@@ -1730,7 +1736,7 @@ bool setup_screen(void)
 				 * No workspace hint or bad one. Just add it to our
 				 * current workspace.
 				 */
-				set_workspace(client, curws);
+				set_to_workspace(client, curws);
 				show(client);
 			}
 		}
@@ -2754,7 +2760,7 @@ void erase_client(client_t *client)
 	}
 
 	/* remove from all workspaces */
-	set_workspace(client, WORKSPACE_NONE);
+	remove_from_workspace(client);
 
 	/* check if the window is already gone */
 	if (! error || error->error_code != XCB_WINDOW)
@@ -3613,7 +3619,7 @@ void handle_key_press(xcb_generic_event_t *ev)
 						/* hide and remove from workspace list */
 						set_hidden_events(focuswin(curws));
 						hide(focuswin(curws));
-						set_workspace(focuswin(curws), WORKSPACE_NONE);
+						remove_from_workspace(focuswin(curws));
 					}
 					break;
 				default:
@@ -3839,7 +3845,7 @@ static void handle_client_message(xcb_generic_event_t *ev)
 		if (conf.allowicons && e->data.data32[0] == XCB_ICCCM_WM_STATE_ICONIC) {
 			set_hidden_events(client);
 			hide(client);
-			set_workspace(client, WORKSPACE_NONE);
+			remove_from_workspace(client);
 			return;
 		}
 		return;

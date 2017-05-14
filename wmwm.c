@@ -2747,9 +2747,6 @@ void erase_client(client_t *client)
 	xcb_generic_error_t *error = NULL;
 	uint32_t cws = client->ws;
 
-	if (focuswin(cws) == client)
-		set_focuswin(cws, NULL);
-
 	if (client->frame != XCB_WINDOW_NONE) {
 		error = xcb_request_check(conn,
 				xcb_reparent_window_checked(conn, client->id, screen->root, 0, 0));

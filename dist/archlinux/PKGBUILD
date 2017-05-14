@@ -18,14 +18,13 @@ makedepends=()
 checkdepends=()
 optdepends=()
 provides=()
-conflicts=('mcwm' 'mcwm-git')
+conflicts=()
 replaces=()
 backup=()
 options=()
 install=
 changelog=
 source=("$pkgname-$pkgver.tar.xz")
-sha256sums=("d23a85899bae561cae7b5a63413283d0b137e01fd420baf28c7fcbc725145f13")
 noextract=()
 validpgpkeys=()
 

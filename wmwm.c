@@ -314,7 +314,7 @@ static void raise_client(client_t *client);
 static void raise_or_lower_client(client_t *client);
 static void set_focus(client_t *client);
 static void unset_focus();
-static void focus_next(void);
+static void focus_next();
 static void focus_under_cursor();
 
 static void toggle_fullscreen(client_t *client);
@@ -334,7 +334,7 @@ static void set_borders(xcb_drawable_t win, int width);
 static void update_bordercolor(client_t* client);
 
 static void arrbymon(monitor_t *monitor);
-static void arrangewindows(void);
+static void arrangewindows();
 
 static int start(char *program);
 static void new_win(xcb_window_t win);
@@ -345,11 +345,11 @@ static struct modkeycodes get_modkeys(xcb_mod_mask_t modmask);
 static xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym,
 									 xcb_key_symbols_t * keysyms);
 
-static bool setup_keys(void);
-static bool setup_screen(void);
-static bool setup_ewmh(void);
-static int setup_randr(void);
-static void get_randr(void);
+static bool setup_keys();
+static bool setup_screen();
+static bool setup_ewmh();
+static int setup_randr();
+static void get_randr();
 static void get_outputs(xcb_randr_output_t * outputs, int len,
 					   xcb_timestamp_t timestamp);
 
@@ -375,11 +375,11 @@ static void set_default_events(client_t *client);
 
 
 static void warp_focuswin(step_direction_t direction);
-static void prev_screen(void);
-static void next_screen(void);
+static void prev_screen();
+static void next_screen();
 static void configure_win(xcb_window_t win, uint16_t old_mask, winconf_t wc);
-static void events(void);
-static void print_help(void);
+static void events();
+static void print_help();
 static void signal_catch(int sig);
 
 static void get_monitor_geometry(monitor_t* monitor, xcb_rectangle_t* sp);
@@ -484,7 +484,7 @@ void set_focuswin(uint32_t ws, client_t* client)
 
 // XXX this is just a little precaution and encapsulation
 static void			set_mode(wm_mode_t modus)	{ MCWM_mode = modus; }
-static wm_mode_t	get_mode(void)				{ return MCWM_mode; }
+static wm_mode_t	get_mode()					{ return MCWM_mode; }
 static bool			is_mode(wm_mode_t modus)	{ return (get_mode() == modus); }
 
 static xcb_timestamp_t get_timestamp() { return current_time; }
@@ -633,7 +633,7 @@ void cleanup(int code)
 /*
  * Rearrange windows to fit new screen size.
  */
-void arrangewindows(void)
+void arrangewindows()
 {
 	/*
 	 * Go through all windows. If they don't fit on the new screen,
@@ -1475,7 +1475,7 @@ xcb_keycode_t keysym_to_keycode(xcb_keysym_t keysym, xcb_key_symbols_t * keysyms
  *
  * Returns 0 on success, non-zero otherwise.
  */
-bool setup_keys(void)
+bool setup_keys()
 {
 	xcb_key_symbols_t *keysyms;
 	unsigned i;
@@ -1561,7 +1561,7 @@ bool setup_keys(void)
 /*
  * Initialize EWMH stuff
  */
-bool setup_ewmh(void)
+bool setup_ewmh()
 {
  	/* get ICCCM atoms */
 	icccm.wm_delete_window	= get_atom("WM_DELETE_WINDOW");
@@ -1652,7 +1652,7 @@ bool setup_ewmh(void)
  *
  * Returns 0 on success.
  */
-bool setup_screen(void)
+bool setup_screen()
 {
 	/* Get all children. */
 	xcb_query_tree_reply_t *reply =
@@ -1783,7 +1783,7 @@ void update_shape(client_t* client)
 /*
  * Setup SHAPE extension
  */
-int setup_shape(void)
+int setup_shape()
 {
 	const xcb_query_extension_reply_t *extension;
 	extension = xcb_get_extension_data(conn, &xcb_shape_id);
@@ -1799,7 +1799,7 @@ int setup_shape(void)
  * Set up RANDR extension. Get the extension base and subscribe to
  * events.
  */
-int setup_randr(void)
+int setup_randr()
 {
 	const xcb_query_extension_reply_t *extension;
 	int base;
@@ -1827,7 +1827,7 @@ int setup_randr(void)
 /*
  * Get RANDR resources and figure out how many outputs there are.
  */
-void get_randr(void)
+void get_randr()
 {
 	xcb_randr_get_screen_resources_current_cookie_t rcookie;
 	xcb_randr_get_screen_resources_current_reply_t *res;
@@ -2961,7 +2961,7 @@ void delete_win(client_t* client)
 }
 
 /* Move focus window to previous screen */
-void prev_screen(void)
+void prev_screen()
 {
 	list_t *item;
 
@@ -2983,7 +2983,7 @@ void prev_screen(void)
 }
 
 /* Move focus window to next screen */
-void next_screen(void)
+void next_screen()
 {
 	list_t *item;
 
@@ -3046,7 +3046,7 @@ void configure_win(xcb_window_t win, uint16_t mask, winconf_t wc)
 		xcb_configure_window(conn, win, new_mask, values);
 }
 
-void events(void)
+void events()
 {
 	xcb_generic_event_t *ev = NULL;
 
@@ -4015,7 +4015,7 @@ void handle_destroy_notify(xcb_generic_event_t *ev)
 		erase_client(client);
 }
 
-void print_help(void)
+void print_help()
 {
 	printf("Usage: wmwm [-b width] [-t terminal] [-m menu]"
 			"[-f color] [-F color] [-x color] [-X color]\n");

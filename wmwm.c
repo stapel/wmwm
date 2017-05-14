@@ -2432,9 +2432,8 @@ void resize_step(client_t *client, step_direction_t direction)
 
 	xcb_rectangle_t geometry = client->geometry;
 
-	/* XXX tiling: fullscreen */
 	if (client->fullscreen || ! wtree_is_floating(client->wsitem)) {
-		/* Can't resize a fully maximized window. */
+		/* Can't resize a fully maximized or tiling-window. */
 		return;
 	}
 
@@ -4290,12 +4289,12 @@ void focus_next()
 {
 	wtree_t *node = NULL;
 
+	/* Focus next of focuswin or first in the list */
 	if (focuswin(curws)) {
 		if (focuswin(curws)->fullscreen)
 			return;
 		node = wtree_next(focuswin(curws)->wsitem);
 	}
-
 	if (node == NULL)
 		node = wtree_next(wslist[curws]);
 

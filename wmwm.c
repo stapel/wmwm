@@ -136,7 +136,7 @@ typedef enum {
 #define HIDDEN_FRAME_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
 
 /* What we listen to on the root window */
-#define DEFAULT_ROOT_WINDOW_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_ENTER_WINDOW )
+#define DEFAULT_ROOT_WINDOW_EVENTS (XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_ENTER_WINDOW)
 
 
 
@@ -314,6 +314,7 @@ static void raise_or_lower_client(client_t *client);
 static void set_focus(client_t *client);
 static void unset_focus();
 static void focus_next(void);
+static void focus_under_cursor();
 
 static void toggle_fullscreen(client_t *client);
 static void toggle_vertical(client_t *client);
@@ -328,7 +329,6 @@ static void show(client_t *client);
 static void send_client_message(xcb_window_t window, xcb_atom_t atom);
 static void send_configuration(client_t *client);
 
-static void set_input_focus(xcb_window_t win);
 static void set_borders(xcb_drawable_t win, int width);
 static void update_bordercolor(client_t* client);
 
@@ -803,7 +803,7 @@ void set_workspace(client_t *client, uint32_t ws)
 	if (client->ws == ws)
 		return;
 
-	/* Is it currently on any workspace */
+	/* Is it currently on its workspace */
 	if (client->ws != WORKSPACE_NONE && focuswin(client->ws) == client)
 		set_focuswin(client->ws, NULL);
 
@@ -890,8 +890,7 @@ void change_workspace(uint32_t ws)
 	 * We lose our focus if the window we focus isn't fixed. An
 	 * EnterNotify event will set focus later.
 	 */
-	if (focuswin(curws))
-		unset_focus();
+	unset_focus();
 
 	/* Apply hidden window event mask, this ensures no invalid enter events */
 	wtree_traverse_clients(wslist[curws], &set_hidden_events);
@@ -914,7 +913,7 @@ void change_workspace(uint32_t ws)
 	xcb_flush(conn);
 
 	/* Set focus on the window under the mouse */
-	set_input_focus(XCB_WINDOW_NONE);
+	focus_under_cursor();
 }
 
 /*
@@ -1739,7 +1738,7 @@ bool setup_screen(void)
 	}							/* for */
 
 	 /* Set focus on any window which might be under it */
-	set_input_focus(XCB_WINDOW_NONE);
+	focus_under_cursor();
 
 	destroy(reply);
 	return true;
@@ -2338,11 +2337,7 @@ void set_focus(client_t *client)
 		xcb_ewmh_set_active_window(ewmh, screen_number, 0);
 
 		/* mark current focuswin as no longer focused */
-		if (focuswin(curws)) {
-			client = focuswin(curws);
-			set_focuswin(curws, NULL);
-			ewmh_update_state(client);
-		}
+		unset_focus();
 		return;
 	}
 
@@ -2362,8 +2357,7 @@ void set_focus(client_t *client)
 	}
 
 	/* Unset last focus. */
-	if (focuswin(curws))
-		unset_focus();
+	unset_focus();
 
 	/* Remember the new window as the current focused window. */
 	set_focuswin(curws, client);
@@ -3674,7 +3668,7 @@ void handle_enter_notify(xcb_generic_event_t *ev)
 			/* No window has the focus, it might be reverted to 0x0,
 			 * so we set it on under a window the cursor.
 			 */
-			set_input_focus(XCB_WINDOW_NONE);
+			focus_under_cursor();
 		}
 		return;
 	}
@@ -4278,7 +4272,7 @@ int main(int argc, char **argv)
 	}
 
 	xcb_flush(conn);
-	set_input_focus(XCB_WINDOW_NONE);
+	focus_under_cursor();
 
 	/* Loop over events. */
 	events();
@@ -4312,20 +4306,19 @@ void focus_next()
 	}
 }
 
-
-void set_input_focus(xcb_window_t win)
+/* focus the window under the cursor */
+void focus_under_cursor()
 {
 	xcb_query_pointer_reply_t *pointer;
+	xcb_window_t win = XCB_WINDOW_NONE;
 
-	if (win == XCB_WINDOW_NONE) {
-		pointer = xcb_query_pointer_reply(conn,
-				xcb_query_pointer(conn, screen->root), 0);
-		if (pointer) {
-			win = pointer->child;
-			destroy(pointer);
-		} else {
-			PDEBUG("Did not find window under cursor.\n");
-		}
+	pointer = xcb_query_pointer_reply(conn,
+			xcb_query_pointer(conn, screen->root), 0);
+	if (pointer) {
+		win = pointer->child;
+		destroy(pointer);
+	} else {
+		PDEBUG("Did not find window under cursor.\n");
 	}
 	set_focus(find_clientp(win));
 }

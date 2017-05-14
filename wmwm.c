@@ -310,7 +310,9 @@ static void remove_from_workspace(client_t *client);
 static void change_workspace(uint32_t ws);
 
 static void update_shape(client_t *client);
+static void adjust_stacking(client_t *client);
 static void raise_client(client_t *client);
+static void lower_client(client_t *client);
 static void raise_or_lower_client(client_t *client);
 static void set_focus(client_t *client);
 static void unset_focus();
@@ -2138,14 +2140,30 @@ monitor_t *add_monitor(xcb_randr_output_t id, char *name,
 	return mon;
 }
 
+void adjust_stacking(client_t *client)
+{
+	if (wtree_is_floating(client->wsitem) || client->fullscreen)
+		raise_client(client);
+	else
+		lower_client(client);
+}
+
+void lower_client(client_t *client)
+{
+	uint32_t values[] = { XCB_STACK_MODE_BELOW };
+	assert(client != NULL);
+
+	xcb_configure_window(conn, client->frame,
+			XCB_CONFIG_WINDOW_STACK_MODE, values);
+}
+
 void raise_client(client_t *client)
 {
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
 	assert(client != NULL);
-	// only raise floats
-	if (wtree_is_floating(client->wsitem) || client->fullscreen)
-		xcb_configure_window(conn, client->frame,
-				XCB_CONFIG_WINDOW_STACK_MODE, values);
+
+	xcb_configure_window(conn, client->frame,
+			XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
 
 /*
@@ -2155,13 +2173,7 @@ void raise_client(client_t *client)
 void raise_or_lower_client(client_t *client)
 {
 	uint32_t values[] = { XCB_STACK_MODE_OPPOSITE };
-	xcb_drawable_t win;
-
-	// only raise floats
-	if (! client || ! wtree_is_floating(client->wsitem))
-		return;
-
-	win = client->frame;
+	assert(client != NULL);
 
 	xcb_configure_window(conn, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
 }
@@ -2618,6 +2630,7 @@ void unmax(client_t *client)
 	}
 }
 
+/* Toggle fullscreen mode */
 void toggle_fullscreen(client_t *client)
 {
 	if (! client)
@@ -2650,14 +2663,15 @@ void toggle_fullscreen(client_t *client)
 	update_geometry(client, &monitor);
 	ewmh_update_state(client);
 
-	raise_client(client);
+	adjust_stacking(client);
 }
 
+/* Toggle vertical maximization */
 void toggle_vertical(client_t *client)
 {
 	xcb_rectangle_t monitor;
 
-	if (! client || wtree_is_tiling(client->wsitem)) {
+	if (! client || ! wtree_is_floating(client->wsitem))
 	   return;
 
 	get_monitor_geometry(client->monitor, &monitor);
@@ -2691,6 +2705,7 @@ void toggle_vertical(client_t *client)
 	ewmh_update_state(client);
 }
 
+/* Set events for client */
 void set_default_events(client_t *client)
 {
 	const uint32_t	mask = XCB_CW_EVENT_MASK;
@@ -2698,6 +2713,7 @@ void set_default_events(client_t *client)
 	xcb_change_window_attributes(conn, client->frame, mask, values);
 }
 
+/* Set events for hidden client */
 void set_hidden_events(client_t *client)
 {
 	const uint32_t	mask = XCB_CW_EVENT_MASK;
@@ -2705,7 +2721,7 @@ void set_hidden_events(client_t *client)
 	xcb_change_window_attributes(conn, client->frame, mask, values);
 }
 
-/* show client */
+/* Show client */
 void show(client_t *client)
 {
 	uint32_t data[] = { XCB_ICCCM_WM_STATE_NORMAL, XCB_NONE };
@@ -2718,9 +2734,11 @@ void show(client_t *client)
 
 	client->hidden = false;
 	ewmh_update_state(client);
+
+	adjust_stacking(client);
 }
 
-/* send window into iconic mode and hide */
+/* Send window into iconic mode and hide */
 void hide(client_t *client)
 {
 	uint32_t data[] = { XCB_ICCCM_WM_STATE_ICONIC, XCB_NONE };
@@ -2975,7 +2993,7 @@ void prev_screen()
 
 	focuswin(curws)->monitor = item->data;
 
-	raise_client(focuswin(curws));
+	adjust_stacking(focuswin(curws));
 	update_geometry(focuswin(curws), NULL);
 
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin(curws)->frame,
@@ -2997,7 +3015,7 @@ void next_screen()
 
 	focuswin(curws)->monitor = item->data;
 
-	raise_client(focuswin(curws));
+	adjust_stacking(focuswin(curws));
 	update_geometry(focuswin(curws), NULL);
 
 	xcb_warp_pointer(conn, XCB_WINDOW_NONE, focuswin(curws)->frame,
@@ -3266,11 +3284,11 @@ void handle_button_press(xcb_generic_event_t* ev)
 		return;
 	}
 
-	raise_client(focuswin(curws));
-
 	// if it's a non floating window, just return
 	if (! wtree_is_floating(focuswin(curws)->wsitem))
 		return;
+	
+	raise_client(focuswin(curws));
 
 	switch (e->detail) {
 		case 1: /* left button: move */

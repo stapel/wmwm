@@ -126,7 +126,7 @@ typedef enum {
  * Substructure notify (unmap/destroy notify etc.)
  * Substructure Redirect (configure requests etc.)
 */
-#define DEFAULT_FRAME_EVENTS (XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY)
+#define DEFAULT_FRAME_EVENTS (XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_FOCUS_CHANGE)
 
 /* Frame events for hidden frames
  *
@@ -256,6 +256,7 @@ static void handle_button_release(xcb_generic_event_t*);
 static void handle_key_press(xcb_generic_event_t*);
 static void handle_key_release(xcb_generic_event_t*);
 static void handle_enter_notify(xcb_generic_event_t*);
+static void handle_focus_in(xcb_generic_event_t*);
 static void handle_configure_notify(xcb_generic_event_t*);
 static void handle_configure_request(xcb_generic_event_t*);
 static void handle_client_message(xcb_generic_event_t*);
@@ -276,6 +277,7 @@ static void (*handler[XCB_EVENT_RESPONSE_TYPE_MASK]) (xcb_generic_event_t*) = {
 	[XCB_KEY_PRESS]			= handle_key_press,
 	[XCB_KEY_RELEASE]		= handle_key_release,
 	[XCB_ENTER_NOTIFY]		= handle_enter_notify,
+	[XCB_FOCUS_IN]		    = handle_focus_in,
 	[XCB_CONFIGURE_NOTIFY]	= handle_configure_notify,
 	[XCB_CONFIGURE_REQUEST] = handle_configure_request,
 	[XCB_CLIENT_MESSAGE]	= handle_client_message,
@@ -431,6 +433,7 @@ void toggle_floating(client_t *client)
 
 	update_clues(wslist[client->ws], screen_rect());
 	wtree_print_tree(wslist[client->ws]);
+	adjust_stacking(client);
 }
 
 // toggle tiling mode of parent container
@@ -449,6 +452,7 @@ void toggle_tiling(client_t *client)
 	// XXX tiling, store geometry in tiling nodes
 	update_clues(wslist[client->ws], screen_rect());
 	wtree_print_tree(wslist[client->ws]);
+	adjust_stacking(client);
 }
 
 void setup_workspaces()
@@ -3653,6 +3657,20 @@ void handle_key_release(xcb_generic_event_t *ev)
 {
 	xcb_key_release_event_t *e = (xcb_key_release_event_t *) ev;
 	update_timestamp(e->time);
+}
+
+void handle_focus_in(xcb_generic_event_t *ev)
+{
+	xcb_focus_in_event_t *e = (xcb_focus_in_event_t*) ev;
+
+	PDEBUG ("Focus in: detail %d, event 0x%x\n", e->detail, e->event);
+	if (focuswin(curws) && focuswin(curws)->frame != e->event) {
+		PDEBUG("Someone is stealing our focus! (JAVA??)\n");
+		client_t* tmp = focuswin(curws);
+		set_focuswin(curws, NULL);
+		set_focus(tmp);
+		xcb_flush(conn);
+	}
 }
 
 void handle_enter_notify(xcb_generic_event_t *ev)

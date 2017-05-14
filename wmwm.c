@@ -3665,7 +3665,7 @@ void handle_focus_in(xcb_generic_event_t *ev)
 
 	PDEBUG ("Focus in: detail %d, event 0x%x\n", e->detail, e->event);
 	if (focuswin(curws) && focuswin(curws)->frame != e->event) {
-		PDEBUG("Someone is stealing our focus! (JAVA??)\n");
+		PDEBUG("Someone is stealing our focus! (JAVA?)\n");
 		client_t* tmp = focuswin(curws);
 		set_focuswin(curws, NULL);
 		set_focus(tmp);

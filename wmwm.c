@@ -807,6 +807,7 @@ void remove_from_workspace(client_t *client)
 
 	client->ws = WORKSPACE_NONE;
 }
+
 /*
  * set client to one or no workspace
  */
@@ -2657,7 +2658,7 @@ void toggle_vertical(client_t *client)
 {
 	xcb_rectangle_t monitor;
 
-	if (! client)
+	if (! client || wtree_is_tiling(client->wsitem)) {
 	   return;
 
 	get_monitor_geometry(client->monitor, &monitor);
